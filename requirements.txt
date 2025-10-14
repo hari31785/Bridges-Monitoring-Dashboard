@@ -1,0 +1,27 @@
+# Core Dashboard Dependencies
+streamlit==1.28.1
+pandas==2.1.3
+plotly==5.17.0
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# Database Connectors
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+pymysql==1.1.0
+pyodbc==5.0.1
+sqlite3  # Built-in with Python
+
+# Configuration Management
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Data Visualization
+seaborn==0.13.0
+matplotlib==3.8.2
+
+# Utilities
+numpy==1.25.2
+datetime
+pathlib
+logging
