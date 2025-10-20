@@ -1,1 +1,33 @@
+# Data Source Configuration
+data_source:
+  type: "excel" # Options: "excel", "database"
+  
+# Excel Configuration
+excel:
+  file_path: "data/sample_data.xlsx"
+  sheet_name: null  # null means all sheets, or specify sheet name
+  header_row: 0     # Row index for headers (0-based)
 
+# Database Configuration
+database:
+  type: "sqlite"    # Options: "sqlite", "postgresql", "mysql", "sqlserver"
+  host: "localhost"
+  port: 5432
+  database: "monitoring_db"
+  username: ""
+  password: ""
+  connection_string: "sqlite:///data/monitoring.db"  # For SQLite
+  
+# Dashboard Settings
+dashboard:
+  title: "Monitoring Dashboard"
+  page_layout: "wide"
+  theme: "light"
+  auto_refresh: false
+  refresh_interval: 60  # seconds
+
+# Chart Settings
+charts:
+  default_height: 400
+  color_palette: ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+  show_toolbar: true
