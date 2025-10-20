@@ -3688,8 +3688,13 @@ class MonitoringDashboard:
             selected_section = st.session_state.get('selected_section')
             selected_subsection = st.session_state.get('selected_subsection')
             
+            # Handle Summary section separately (no data loading needed)
+            if selected_section == 'summary':
+                self.render_summary_content(None, None)
+                return
+            
             # Check if we should load data (either has subsection OR is a section that loads data directly)
-            sections_with_direct_data = ['summary', 'extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
+            sections_with_direct_data = ['extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
                                        'online_exceptions_prd', 'batch_exceptions_prd', 'online_exceptions_uat', 
                                        'batch_exceptions_uat']  # Sections that load data without subsections
             should_load_data = selected_subsection or (selected_section in sections_with_direct_data)
