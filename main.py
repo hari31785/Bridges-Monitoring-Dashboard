@@ -1494,7 +1494,7 @@ class MonitoringDashboard:
         """, unsafe_allow_html=True)
         
         # Clean up status display
-        section_name = selected_section.replace("_", " ").title()
+        section_name = selected_section.replace("_", " ").title() if selected_section else "Home"
         period_name = selected_period.title() if selected_section == "benefit_issuance" else "N/A"
         
         return {
@@ -1506,7 +1506,20 @@ class MonitoringDashboard:
         }
 
     def render_content_placeholder(self) -> None:
-        """Render improved placeholder content when no subsection is selected."""
+        """Render section-specific content when no subsection is selected."""
+        # Get current selected section
+        selected_section = st.session_state.get('selected_section')
+        
+        # If no section is selected, show the main welcome page
+        if not selected_section:
+            self.render_welcome_page()
+            return
+            
+        # Show section-specific home page
+        self.render_section_home_page(selected_section)
+    
+    def render_welcome_page(self) -> None:
+        """Render the main welcome page."""
         # Override global h1 styles for our header
         st.markdown("""
         <style>
@@ -1629,6 +1642,233 @@ class MonitoringDashboard:
             
             🔄 **Mass Update** - System update tracking
             """)
+    
+    def render_section_home_page(self, section_key: str) -> None:
+        """Render section-specific home page with relevant information."""
+        # Section information mapping
+        section_info = {
+            "error_counts": {
+                "title": "100 Error Counts",
+                "icon": "🚨",
+                "color": "#f44336",
+                "description": "Monitor session timeouts, system errors, and critical error counts that impact system performance.",
+                "features": [
+                    "Track daily error patterns",
+                    "Identify peak error times", 
+                    "Monitor error types and frequency",
+                    "Generate error trend reports"
+                ]
+            },
+            "user_impact": {
+                "title": "User Impact",
+                "icon": "👥", 
+                "color": "#ff9800",
+                "description": "Track and analyze the impact of system issues on user experience and service availability.",
+                "features": [
+                    "Daily user impact tracking",
+                    "Service availability metrics",
+                    "User experience analysis",
+                    "Impact severity assessment"
+                ]
+            },
+            "benefit_issuance": {
+                "title": "Benefit Issuance",
+                "icon": "📈",
+                "color": "#2196f3", 
+                "description": "Monitor benefit issuance processes including FAP, FIP, and SDA client payment tracking.",
+                "features": [
+                    "FAP Daily Issuance monitoring",
+                    "FIP Daily Issuance tracking", 
+                    "SDA Daily Client Payments",
+                    "Cross-program analysis"
+                ]
+            },
+            "correspondence_tango": {
+                "title": "Correspondence",
+                "icon": "📧",
+                "color": "#4caf50", 
+                "description": "Monitor correspondence systems, Tango monitoring, and file upload status tracking.",
+                "features": [
+                    "Tango monitoring status",
+                    "File upload tracking",
+                    "View history validation",
+                    "Correspondence processing"
+                ]
+            },
+            "mass_update": {
+                "title": "Mass Update",
+                "icon": "🔄", 
+                "color": "#9c27b0",
+                "description": "Track mass update processes and system-wide changes.",
+                "features": [
+                    "Mass update status",
+                    "Update completion tracking",
+                    "System change monitoring",
+                    "Update impact analysis"
+                ]
+            },
+            "interfaces": {
+                "title": "Interfaces",
+                "icon": "🔗",
+                "color": "#607d8b", 
+                "description": "Monitor system interfaces and integration points.",
+                "features": [
+                    "Interface status monitoring",
+                    "Connection health checks",
+                    "Data flow tracking",
+                    "Integration performance"
+                ]
+            },
+            "extra_batch_connections": {
+                "title": "Extra Batch Connections", 
+                "icon": "⚡",
+                "color": "#ff5722",
+                "description": "Monitor additional batch connections and process execution.",
+                "features": [
+                    "Extra connection tracking",
+                    "Batch process monitoring",
+                    "Connection performance",
+                    "Process completion status"
+                ]
+            },
+            "hung_threads": {
+                "title": "Hung Threads",
+                "icon": "🧵",
+                "color": "#795548",
+                "description": "Detect and monitor hung threads that may impact system performance.",
+                "features": [
+                    "Thread status monitoring",
+                    "Hung thread detection",
+                    "Performance impact analysis", 
+                    "Thread recovery tracking"
+                ]
+            },
+            "online_exceptions_prd": {
+                "title": "Online Exceptions - PRD",
+                "icon": "🌐",
+                "color": "#e91e63", 
+                "description": "Monitor online exceptions in the production environment.",
+                "features": [
+                    "Production exception tracking",
+                    "Real-time error monitoring",
+                    "Exception categorization",
+                    "Production stability metrics"
+                ]
+            },
+            "batch_exceptions_prd": {
+                "title": "Batch Exceptions - PRD",
+                "icon": "💻",
+                "color": "#3f51b5",
+                "description": "Track batch process exceptions in production environment.",
+                "features": [
+                    "Batch exception monitoring",
+                    "Production batch analysis",
+                    "Error pattern identification",
+                    "Batch performance tracking"
+                ]
+            },
+            "online_exceptions_uat": {
+                "title": "Online Exceptions - UAT", 
+                "icon": "🧪",
+                "color": "#009688",
+                "description": "Monitor online exceptions in the UAT testing environment.",
+                "features": [
+                    "UAT exception tracking",
+                    "Testing environment monitoring",
+                    "Pre-production analysis",
+                    "Quality assurance metrics"
+                ]
+            },
+            "batch_exceptions_uat": {
+                "title": "Batch Exceptions - UAT",
+                "icon": "🔬",
+                "color": "#8bc34a", 
+                "description": "Track batch process exceptions in UAT environment.",
+                "features": [
+                    "UAT batch monitoring",
+                    "Testing batch analysis",
+                    "Pre-production validation",
+                    "Batch testing metrics"
+                ]
+            }
+        }
+        
+        # Get section information
+        info = section_info.get(section_key, {
+            "title": "Section Overview", 
+            "icon": "📊",
+            "color": "#1f4e79",
+            "description": "Monitor and analyze system performance metrics.",
+            "features": ["Data monitoring", "Performance tracking", "Report generation"]
+        })
+        
+        # Render section-specific header
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, {info['color']} 0%, {info['color']}CC 100%);
+            color: white;
+            padding: 30px 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        ">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+                <span style="font-size: 3rem; margin-right: 15px;">{info['icon']}</span>
+                <h1 style="
+                    margin: 0;
+                    font-size: 2.2rem;
+                    font-weight: 700;
+                    color: white !important;
+                ">{info['title']}</h1>
+            </div>
+            <p style="
+                margin: 0;
+                font-size: 1.1rem;
+                opacity: 0.95;
+                color: white !important;
+            ">{info['description']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Section features
+        st.markdown("### 🔧 Key Features")
+        
+        col1, col2 = st.columns(2)
+        
+        for i, feature in enumerate(info['features']):
+            if i % 2 == 0:
+                with col1:
+                    st.markdown(f"✅ {feature}")
+            else:
+                with col2:
+                    st.markdown(f"✅ {feature}")
+        
+        st.markdown("---")      
+        
+        # Instructions
+        st.markdown("### 📋 Getting Started")
+        st.info(f"""
+        **To view {info['title']} data:**
+        
+        1. 📅 Set your date range using the sidebar controls
+        2. ▶️ Expand the **{info['title']}** section in the navigation tree  
+        3. 📊 Select a specific subsection to view detailed data and reports
+        4. 🔍 Use filters and controls to customize your analysis
+        """)
+        
+        # Additional help
+        st.markdown("### ❓ Need Help?")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.success("**📚 Documentation**\n\nCheck the user guides for detailed instructions.")
+            
+        with col2:
+            st.warning("**🏠 Home Page**\n\nUse the 'Bridges M&O Status Home' button to return to main page.")
+            
+        with col3: 
+            st.info("**🔄 Refresh Data**\n\nExpand sections to load the latest data automatically.")
         
         # Features highlight
         st.markdown("---")
@@ -1744,7 +1984,7 @@ class MonitoringDashboard:
             }
         }
         
-        title = section_titles.get(selected_section, {}).get(selected_period, f"{selected_section.replace('_', ' ').title()} Dashboard")
+        title = section_titles.get(selected_section, {}).get(selected_period, f"{selected_section.replace('_', ' ').title()} Dashboard" if selected_section else "Dashboard")
         st.title(title)
         
         # Section-specific content routing
@@ -3223,7 +3463,7 @@ class MonitoringDashboard:
             
             # Initialize session state
             if 'selected_section' not in st.session_state:
-                st.session_state.selected_section = 'benefit_issuance'
+                st.session_state.selected_section = None  # Start with welcome page
             if 'selected_period' not in st.session_state:
                 st.session_state.selected_period = 'daily'
             
