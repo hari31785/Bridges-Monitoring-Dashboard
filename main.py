@@ -866,20 +866,32 @@ class MonitoringDashboard:
         Returns:
             Dictionary with selected section, period, and subsection
         """
-        st.sidebar.title("📊 Dashboard Navigation")
-        st.sidebar.markdown("---")
+        st.sidebar.title("📊 Monitoring Dashboard")
         
-        # Date filtering control
-        st.sidebar.subheader("📅 Date Filter")
+        # Add welcome message and instructions
+        st.sidebar.markdown("""
+        <div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+        <h4 style="color: #1f4e79; margin: 0;">👋 Welcome!</h4>
+        <p style="margin: 5px 0; font-size: 12px; color: #333;">
+        <b>Getting Started:</b><br>
+        1️⃣ Choose your date range below<br>
+        2️⃣ Click any dashboard section<br>
+        3️⃣ Expand folders to see data
+        </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Date filtering control with better UI
+        st.sidebar.markdown("### 📅 Date Range")
         weeks_to_show = st.sidebar.selectbox(
             "Show data from:",
             options=[1, 2, 3, 4],
             index=1,  # Default to 2 weeks (current + previous)
             format_func=lambda x: {
-                1: "Current week only",
-                2: "Current + Previous week", 
-                3: "Current + 2 Previous weeks",
-                4: "Current + 3 Previous weeks"
+                1: "📍 Current week only",
+                2: "📊 Current + Previous week", 
+                3: "📈 Current + 2 Previous weeks",
+                4: "📋 Current + 3 Previous weeks"
             }[x],
             help="Filter data to show only recent complete weeks (Monday to Sunday)"
         )
@@ -889,37 +901,66 @@ class MonitoringDashboard:
         
         st.sidebar.markdown("---")
         
-        # Add simple CSS for clear button styling with smaller sub-menu items and enhanced table headers
+        # Add dashboard sections header with instructions
+        st.sidebar.markdown("""
+        ### 🎯 Dashboard Sections
+        <p style="font-size: 11px; color: #666; margin-bottom: 10px;">
+        Click any section below to view data. Sections with ▶️ can be expanded.
+        </p>
+        """, unsafe_allow_html=True)
+        
+        # Enhanced CSS for better navigation UI
         tree_css = """
         <style>            
-        /* Clear visual hierarchy for buttons */
+        /* Main navigation buttons with better visibility */
         .stButton > button {
             text-align: left !important;
-            padding-left: 8px !important;
+            padding: 8px 12px !important;
+            font-weight: 500 !important;
+            border-radius: 6px !important;
+            transition: all 0.2s ease !important;
+            margin: 2px 0 !important;
         }
         
-        /* Target sub-menu containers and their buttons */
+        /* Hover effects for main buttons */
+        .stButton > button:hover {
+            background-color: #e3f2fd !important;
+            border-color: #1976d2 !important;
+            color: #1565c0 !important;
+        }
+        
+        /* Sub-menu containers with indentation */
         .sub-menu-container .stButton > button {
-            font-size: 12px !important;
+            font-size: 11px !important;
             color: #555 !important;
-            background-color: #f8f9fa !important;
-            border: 1px solid #e9ecef !important;
+            background-color: #fafafa !important;
+            border: 1px solid #e0e0e0 !important;
             margin: 1px 0 !important;
-            padding: 4px 8px !important;
+            padding: 5px 8px !important;
             min-height: 28px !important;
             line-height: 1.3 !important;
+            margin-left: 8px !important;
+            font-weight: 400 !important;
         }
         
-        /* Target file-menu containers and their buttons (most nested) */
+        /* Sub-menu hover effects */
+        .sub-menu-container .stButton > button:hover {
+            background-color: #f0f8ff !important;
+            border-color: #2196f3 !important;
+            color: #1565c0 !important;
+        }
+        
+        /* File-menu containers (deepest level) */
         .file-menu-container .stButton > button {
-            font-size: 10px !important;
+            font-size: 11px !important;
             color: #666 !important;
-            background-color: #f1f3f4 !important;
-            border: 1px solid #dadce0 !important;
+            background-color: #f8f8f8 !important;
+            border: 1px solid #ddd !important;
             margin: 1px 0 !important;
-            padding: 3px 6px !important;
-            min-height: 22px !important;
+            padding: 4px 8px !important;
+            min-height: 26px !important;
             line-height: 1.2 !important;
+            margin-left: 16px !important;
         }
         
         /* Alternative approach - target by indentation */
@@ -978,7 +1019,7 @@ class MonitoringDashboard:
             st.session_state.expanded_sections = set()
         
         # Get current selections from session state
-        current_section_key = st.session_state.get('selected_section', 'error_counts')
+        current_section_key = st.session_state.get('selected_section', 'benefit_issuance')
         current_period_key = st.session_state.get('selected_period', 'daily')
         current_subsection_key = st.session_state.get('selected_subsection', None)
         
@@ -1092,6 +1133,15 @@ class MonitoringDashboard:
                                     for file_name in available_files:
                                         icon = file_icons.get(file_name, "📄")
                                         
+                                        # Check if this is the currently selected dashboard
+                                        is_active = (st.session_state.get('selected_section') == section_key and 
+                                                   st.session_state.get('selected_subsection') == file_name and
+                                                   st.session_state.get('selected_period') == period_key)
+                                        
+                                        # Add active styling if selected
+                                        if is_active:
+                                            st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
+                                        
                                         # Clear, clickable button for files
                                         if st.sidebar.button(f"    📄 {icon} {file_name}", 
                                                            key=f"file_{period_key}_{file_name}",
@@ -1105,6 +1155,10 @@ class MonitoringDashboard:
                                             st.session_state.selected_subsection = file_name
                                             st.session_state.selected_period = period_key
                                             st.rerun()
+                                        
+                                        # Close active div if it was opened
+                                        if is_active:
+                                            st.sidebar.markdown('</div>', unsafe_allow_html=True)
                                     
                                     st.sidebar.markdown('</div>', unsafe_allow_html=True)
                                 else:
@@ -1159,12 +1213,14 @@ class MonitoringDashboard:
                             for file_name in available_files:
                                 icon = file_icons.get(file_name, "📄")
                                 
+                                # Clear, clickable button for files
                                 if st.sidebar.button(f"  📄 {icon} {file_name}", 
                                                    key=f"file_error_counts_{file_name}",
                                                    help=f"Click to analyze {file_name}",
                                                    use_container_width=True):
                                     st.session_state.selected_section = section_key
                                     st.session_state.selected_subsection = file_name
+                                    st.rerun()
                                     st.rerun()
                         else:
                             st.sidebar.markdown('<div style="color: orange; font-size: 12px;">⚠️ No files available</div>', unsafe_allow_html=True)
@@ -1193,6 +1249,7 @@ class MonitoringDashboard:
                                     st.session_state.selected_section = section_key
                                     st.session_state.selected_subsection = file_name
                                     st.rerun()
+
                         else:
                             st.sidebar.markdown('<div style="color: orange; font-size: 12px;">⚠️ No files available</div>', unsafe_allow_html=True)
                         
@@ -1201,12 +1258,14 @@ class MonitoringDashboard:
                     st.sidebar.markdown('</div>', unsafe_allow_html=True)
             else:
                 # Section without subsections - just a clickable button
+                # Check if this is the currently selected section
+                is_active = st.session_state.get('selected_section') == section_key
+                
+                # Section without subsections - just a clickable button
                 if st.sidebar.button(f"{section_icon} {section_name}", key=f"section_{section_key}", 
                                    help=f"Select {section_name}", use_container_width=True):
-                    selected_section = section_key
-                    selected_subsection = None
-                    st.session_state.selected_section = selected_section
-                    st.session_state.selected_subsection = selected_subsection
+                    st.session_state.selected_section = section_key
+                    st.session_state.selected_subsection = None
                     st.rerun()
             
             # Add small visual separator  
@@ -1277,6 +1336,18 @@ class MonitoringDashboard:
         # For other sections, use default period
         selected_period = current_period_key if selected_section == "benefit_issuance" else "daily"
         
+        # Add helpful footer at bottom of sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("""
+        <div style="background-color: #f0f8ff; padding: 8px; border-radius: 5px; font-size: 11px;">
+        <b>💡 Tips:</b><br>
+        • Expand sections with ▶️ arrows<br>
+        • Data auto-filters by date range<br>
+        • Red highlights show issues<br>
+        • Currency & percentages auto-format
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Clean up status display
         section_name = selected_section.replace("_", " ").title()
         period_name = selected_period.title() if selected_section == "benefit_issuance" else "N/A"
@@ -1290,14 +1361,101 @@ class MonitoringDashboard:
         }
 
     def render_content_placeholder(self) -> None:
-        """Render placeholder content when no subsection is selected."""
-        st.title("📊 Monitoring Dashboard")
-        st.info("👈 Click on a dashboard item in the sidebar to view its contents")
+        """Render improved placeholder content when no subsection is selected."""
+        # Main title with better styling
+        st.markdown("""
+        <div style="text-align: center; padding: 20px;">
+        <h1 style="color: #1f4e79;">📊 Monitoring Dashboard</h1>
+        <p style="font-size: 18px; color: #666;">Real-time Excel Data Analysis & Monitoring</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Quick start guide
+        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        with col2:
+            st.markdown("""
+            <div style="background-color: #f8f9ff; padding: 20px; border-radius: 10px; border-left: 5px solid #4CAF50;">
+            <h3 style="color: #1f4e79; margin-top: 0;">� Quick Start Guide</h3>
+            
+            <div style="margin: 15px 0;">
+            <h4 style="color: #2e7d32; margin-bottom: 8px;">Step 1: Choose Date Range</h4>
+            <p style="margin: 0; font-size: 14px;">📅 Use the sidebar to select how much data to show (current week, previous weeks, etc.)</p>
+            </div>
+            
+            <div style="margin: 15px 0;">
+            <h4 style="color: #2e7d32; margin-bottom: 8px;">Step 2: Select Dashboard Section</h4>
+            <p style="margin: 0; font-size: 14px;">👈 Click any section in the sidebar - start with "🚨 100 Error Counts"</p>
+            </div>
+            
+            <div style="margin: 15px 0;">
+            <h4 style="color: #2e7d32; margin-bottom: 8px;">Step 3: Expand for Details</h4>
+            <p style="margin: 0; font-size: 14px;">▶️ Click the arrow icons to expand sections and see your data</p>
+            </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
         st.markdown("---")
-        st.write("**Available Options:**")
-        st.write("• Navigate to specific data files using the sidebar")
-        st.write("• Select from Daily, Weekly, Monthly, or Yearly periods")
-        st.write("• View filtered and formatted data tables")
+        
+        # Dashboard sections overview
+        st.markdown("### 📋 Available Dashboard Sections")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            **🔴 High Priority Monitoring:**
+            - 🚨 **100 Error Counts** - Session timeouts & errors
+            - 👥 **User Impact** - Daily user impact status
+            - ⚡ **Extra Batch Connections** - Connection monitoring
+            """)
+            
+        with col2:
+            st.markdown("""
+            **📊 Business Intelligence:**
+            - 📈 **Benefit Issuance** - FAP, FIP, SDA tracking
+            - 📧 **Correspondence** - Tango monitoring & uploads
+            - 🔄 **Mass Update** - System update tracking
+            """)
+        
+        # Features highlight
+        st.markdown("---")
+        st.markdown("### ✨ Dashboard Features")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+            **🎯 Smart Formatting**
+            - Currency: $1,234.56
+            - Percentages: 4.5%
+            - Dates: DD-MON-YYYY
+            """)
+            
+        with col2:
+            st.markdown("""
+            **🚨 Conditional Alerts**
+            - Red highlighting for issues
+            - Variance detection
+            - Connection warnings
+            """)
+            
+        with col3:
+            st.markdown("""
+            **📊 Interactive Charts**
+            - Multiple visualization types
+            - Trend analysis
+            - Real-time filtering
+            """)
+        
+        # Call to action
+        st.markdown("---")
+        st.markdown("""
+        <div style="text-align: center; background-color: #e3f2fd; padding: 15px; border-radius: 8px;">
+        <h4 style="color: #1565c0; margin: 0;">Ready to Get Started? 👆</h4>
+        <p style="margin: 8px 0 0 0; color: #1976d2;">Click "🚨 100 Error Counts" in the sidebar to begin exploring your data!</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     def render_main_content_with_data(self, df: pd.DataFrame, nav_result: Dict[str, Any]) -> None:
         """Render main content with loaded data."""
@@ -1537,7 +1695,7 @@ class MonitoringDashboard:
             
             # Display with custom styling and dynamic height
             display_height = min(600, max(200, len(df) * 35 + 100))
-            st.dataframe(styled_df, use_container_width=True, height=display_height)
+            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
             
             # Add legend
             st.markdown("""
@@ -1575,7 +1733,7 @@ class MonitoringDashboard:
             
             # Use regular table with dynamic height
             display_height = min(600, max(200, len(display_df) * 35 + 100))
-            st.dataframe(display_df, use_container_width=True, height=display_height)
+            st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
     
     def render_view_history_table(self, df: pd.DataFrame, title: str) -> None:
         """Render View History Screen Validation table with merged date cells."""
@@ -1746,7 +1904,7 @@ class MonitoringDashboard:
         if not date_columns:
             # No date columns found, show regular table
             st.write("**Main Tango Monitoring Data:**")
-            st.dataframe(df, use_container_width=True, height=400)
+            st.dataframe(df, use_container_width=True, height=400, hide_index=True)
             return
         
         date_col = date_columns[0]  # Use first date column
@@ -1967,7 +2125,7 @@ class MonitoringDashboard:
             
             # Display with custom styling and dynamic height
             display_height = min(600, max(200, len(display_df) * 35 + 100))
-            st.dataframe(styled_df, use_container_width=True, height=display_height)
+            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
             
             # Add legend
             st.markdown("""
@@ -1983,7 +2141,7 @@ class MonitoringDashboard:
         else:
             # If no difference columns found, use regular table with formatting
             display_height = min(600, max(200, len(upload_status_formatted) * 35 + 100))
-            st.dataframe(upload_status_formatted, use_container_width=True, height=display_height)
+            st.dataframe(upload_status_formatted, use_container_width=True, height=display_height, hide_index=True)
         
         # Show summary metrics for upload status
         col1, col2, col3 = st.columns(3)
@@ -2163,7 +2321,7 @@ class MonitoringDashboard:
         # Show sample data
         if not df.empty:
             st.write("**Sample Records:**")
-            st.dataframe(df.head(3))
+            st.dataframe(df.head(3), hide_index=True)
     
     def render_error_counts_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render 100 Error Counts specific content."""
@@ -2393,7 +2551,7 @@ class MonitoringDashboard:
             
             # Display with custom styling and dynamic height
             display_height = min(600, max(200, len(df) * 35 + 100))
-            st.dataframe(styled_df, use_container_width=True, height=display_height)
+            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
             
             # Add legend
             st.markdown("""
@@ -2429,7 +2587,7 @@ class MonitoringDashboard:
             
             # Use regular table with dynamic height
             display_height = min(600, max(200, len(df) * 35 + 100))
-            st.dataframe(display_df, use_container_width=True, height=display_height)
+            st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
     
     def render_hung_threads_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Hung Threads specific content."""
@@ -2737,7 +2895,7 @@ class MonitoringDashboard:
             missing_df = missing_df[missing_df['Missing Count'] > 0]
             
             if not missing_df.empty:
-                st.dataframe(missing_df)
+                st.dataframe(missing_df, hide_index=True)
                 
                 fig = self.chart_component.bar_chart(
                     missing_df, 'Column', 'Missing Percentage', 
@@ -2777,12 +2935,12 @@ class MonitoringDashboard:
                 with col1:
                     st.subheader(f"Top {n_values} values")
                     top_values = df.nlargest(n_values, selected_col)
-                    st.dataframe(top_values)
+                    st.dataframe(top_values, hide_index=True)
                 
                 with col2:
                     st.subheader(f"Bottom {n_values} values")
                     bottom_values = df.nsmallest(n_values, selected_col)
-                    st.dataframe(bottom_values)
+                    st.dataframe(bottom_values, hide_index=True)
             else:
                 st.warning("No numeric columns available for top/bottom analysis.")
     
@@ -2830,35 +2988,40 @@ class MonitoringDashboard:
             # Render navigation FIRST to handle section changes
             nav_result = self.render_navigation_menu()
             
-            # Only load data AFTER navigation is processed
+            # Get selections from session state AFTER navigation is processed
             selected_section = st.session_state.get('selected_section')
             selected_subsection = st.session_state.get('selected_subsection')
             
             # Check if we should load data (either has subsection OR is a section that loads data directly)
-            sections_with_direct_data = ['extra_batch_connections']  # Add more sections as needed
+            sections_with_direct_data = ['extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
+                                       'online_exceptions_prd', 'batch_exceptions_prd', 'online_exceptions_uat', 
+                                       'batch_exceptions_uat']  # Sections that load data without subsections
             should_load_data = selected_subsection or (selected_section in sections_with_direct_data)
             
             if should_load_data:
-                # Auto-detect and load Excel files based on current navigation selections
-                file_config = self.auto_load_excel_file(
-                    section=selected_section,
-                    period=st.session_state.selected_period,
-                    subsection=selected_subsection
-                )
-                
-                if file_config:
-                    # Load data automatically
-                    df = self.load_data(file_config)
+                try:
+                    # Auto-detect and load Excel files based on current navigation selections
+                    file_config = self.auto_load_excel_file(
+                        section=selected_section,
+                        period=st.session_state.get('selected_period', 'daily'),
+                        subsection=selected_subsection
+                    )
                     
-                    if df is not None and not df.empty:
-                        # Render main content with the loaded data
-                        self.render_main_content_with_data(df, nav_result)
-                    elif df is not None and df.empty:
-                        st.warning("The loaded data is empty. Please check your Excel file.")
+                    if file_config:
+                        # Load data automatically
+                        df = self.load_data(file_config)
+                        
+                        if df is not None and not df.empty:
+                            # Render main content with the loaded data
+                            self.render_main_content_with_data(df, nav_result)
+                        elif df is not None and df.empty:
+                            st.warning("The loaded data is empty. Please check your Excel file.")
+                        else:
+                            st.error("Failed to load the Excel file. Please check the file format.")
                     else:
-                        st.error("Failed to load the Excel file. Please check the file format.")
-                else:
-                    st.error("No Excel file configuration found for the selected options.")
+                        st.error(f"No Excel file found for: {selected_section} - {selected_subsection}")
+                except Exception as e:
+                    st.error(f"Error loading data: {str(e)}")
             else:
                 # Show navigation and placeholder when no subsection selected
                 self.render_content_placeholder()
