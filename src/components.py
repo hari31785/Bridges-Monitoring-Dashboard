@@ -268,9 +268,9 @@ class TableComponent:
         # Display the dataframe
         if len(df) > max_rows:
             st.warning(f"Showing first {max_rows} rows of {len(df)} total rows")
-            st.dataframe(df.head(max_rows), use_container_width=True, height=display_height, **kwargs)
+            st.dataframe(df.head(max_rows), use_container_width=True, height=display_height, hide_index=True, **kwargs)
         else:
-            st.dataframe(df, use_container_width=True, height=display_height, **kwargs)
+            st.dataframe(df, use_container_width=True, height=display_height, hide_index=True, **kwargs)
     
     @staticmethod
     def summary_stats(df: pd.DataFrame, title: str = "Summary Statistics") -> None:
@@ -287,7 +287,7 @@ class TableComponent:
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 0:
             st.write("**Numeric Columns:**")
-            st.dataframe(df[numeric_cols].describe())
+            st.dataframe(df[numeric_cols].describe(), hide_index=True)
         
         # Categorical columns summary
         categorical_cols = df.select_dtypes(include=['object', 'category']).columns
