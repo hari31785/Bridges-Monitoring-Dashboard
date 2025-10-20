@@ -909,58 +909,110 @@ class MonitoringDashboard:
         </p>
         """, unsafe_allow_html=True)
         
-        # Enhanced CSS for better navigation UI
+        # Professional Dashboard Styling
         tree_css = """
-        <style>            
-        /* Main navigation buttons with better visibility */
+        <style>
+        /* Import Google Fonts for professional typography */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        /* Global font styling */
+        .main .block-container {
+            font-family: 'Inter', sans-serif !important;
+        }
+        
+        /* Professional color scheme */
+        :root {
+            --primary-blue: #1f4e79;
+            --secondary-blue: #2d5aa0;
+            --accent-blue: #4a90e2;
+            --light-blue: #e8f4fd;
+            --success-green: #28a745;
+            --warning-orange: #fd7e14;
+            --danger-red: #dc3545;
+            --neutral-gray: #6c757d;
+            --light-gray: #f8f9fa;
+            --dark-gray: #343a40;
+        }
+        
+        /* Main navigation buttons with professional styling */
         .stButton > button {
             text-align: left !important;
-            padding: 8px 12px !important;
+            padding: 10px 16px !important;
             font-weight: 500 !important;
-            border-radius: 6px !important;
-            transition: all 0.2s ease !important;
-            margin: 2px 0 !important;
+            border-radius: 8px !important;
+            transition: all 0.3s ease !important;
+            margin: 3px 0 !important;
+            border: 1px solid #e9ecef !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+            font-family: 'Inter', sans-serif !important;
         }
         
-        /* Hover effects for main buttons */
+        /* Enhanced hover effects */
         .stButton > button:hover {
-            background-color: #e3f2fd !important;
-            border-color: #1976d2 !important;
-            color: #1565c0 !important;
+            background: linear-gradient(135deg, var(--light-blue) 0%, #cce7ff 100%) !important;
+            border-color: var(--accent-blue) !important;
+            color: var(--primary-blue) !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
         }
         
-        /* Sub-menu containers with indentation */
+        /* Professional sidebar styling */
+        .css-1d391kg {
+            background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%) !important;
+            border-right: 3px solid var(--primary-blue) !important;
+        }
+        
+        /* Sub-menu containers with professional styling */
         .sub-menu-container .stButton > button {
-            font-size: 11px !important;
-            color: #555 !important;
-            background-color: #fafafa !important;
-            border: 1px solid #e0e0e0 !important;
-            margin: 1px 0 !important;
-            padding: 5px 8px !important;
-            min-height: 28px !important;
-            line-height: 1.3 !important;
-            margin-left: 8px !important;
-            font-weight: 400 !important;
+            font-size: 12px !important;
+            color: var(--neutral-gray) !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+            border: 1px solid #dee2e6 !important;
+            margin: 2px 0 !important;
+            padding: 8px 12px !important;
+            min-height: 32px !important;
+            line-height: 1.4 !important;
+            margin-left: 12px !important;
+            font-weight: 450 !important;
+            border-radius: 6px !important;
+            font-family: 'Inter', sans-serif !important;
+            transition: all 0.2s ease !important;
         }
         
-        /* Sub-menu hover effects */
+        /* Enhanced sub-menu hover effects */
         .sub-menu-container .stButton > button:hover {
-            background-color: #f0f8ff !important;
-            border-color: #2196f3 !important;
-            color: #1565c0 !important;
+            background: linear-gradient(135deg, var(--light-blue) 0%, #d1ecf1 100%) !important;
+            border-color: var(--accent-blue) !important;
+            color: var(--primary-blue) !important;
+            transform: translateX(2px) !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
         }
         
-        /* File-menu containers (deepest level) */
+        /* Professional file-menu containers (dashboard buttons) */
         .file-menu-container .stButton > button {
             font-size: 11px !important;
-            color: #666 !important;
-            background-color: #f8f8f8 !important;
-            border: 1px solid #ddd !important;
-            margin: 1px 0 !important;
-            padding: 4px 8px !important;
-            min-height: 26px !important;
-            line-height: 1.2 !important;
-            margin-left: 16px !important;
+            color: var(--dark-gray) !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f1f3f4 100%) !important;
+            border: 1px solid #dadce0 !important;
+            margin: 2px 0 !important;
+            padding: 6px 10px !important;
+            min-height: 28px !important;
+            line-height: 1.3 !important;
+            margin-left: 20px !important;
+            border-radius: 5px !important;
+            font-weight: 450 !important;
+            font-family: 'Inter', sans-serif !important;
+            transition: all 0.2s ease !important;
+        }
+        
+        /* Dashboard button hover effects */
+        .file-menu-container .stButton > button:hover {
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--secondary-blue) 100%) !important;
+            border-color: var(--primary-blue) !important;
+            color: white !important;
+            transform: translateX(3px) !important;
+            box-shadow: 0 3px 8px rgba(31, 78, 121, 0.2) !important;
         }
         
         /* Alternative approach - target by indentation */
@@ -985,30 +1037,115 @@ class MonitoringDashboard:
             background-color: #f8f9fa !important;
         }
         
-        /* Enhanced table headers for all Streamlit dataframes */
-        .stDataFrame table thead th {
-            font-weight: bold !important;
-            font-size: 16px !important;
-            background-color: #f8f9fa !important;
-            color: #333 !important;
-            text-align: center !important;
-            padding: 12px 8px !important;
-            border-bottom: 2px solid #dee2e6 !important;
-        }
-        
-        /* Enhanced table headers for styled dataframes */
-        .stDataFrame [data-testid="stDataFrameResizable"] table thead th {
-            font-weight: bold !important;
-            font-size: 16px !important;
-            background-color: #f8f9fa !important;
-            color: #333 !important;
-            text-align: center !important;
-            padding: 12px 8px !important;
-        }
-        
-        /* Style for dataframe container */
+        /* Professional table styling */
         .stDataFrame {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 13px !important;
+            border-radius: 8px !important;
+            overflow: hidden !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+            border: 1px solid #e9ecef !important;
+        }
+        
+        /* Enhanced table headers */
+        .stDataFrame table thead th {
+            font-weight: 600 !important;
             font-size: 14px !important;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 100%) !important;
+            color: white !important;
+            text-align: center !important;
+            padding: 14px 10px !important;
+            border-bottom: none !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        
+        /* Table body styling */
+        .stDataFrame table tbody td {
+            padding: 10px 8px !important;
+            border-bottom: 1px solid #f1f3f4 !important;
+            font-family: 'Inter', sans-serif !important;
+            vertical-align: middle !important;
+        }
+        
+        /* Alternating row colors */
+        .stDataFrame table tbody tr:nth-child(even) {
+            background-color: #f8f9fa !important;
+        }
+        
+        .stDataFrame table tbody tr:nth-child(odd) {
+            background-color: white !important;
+        }
+        
+        /* Row hover effects */
+        .stDataFrame table tbody tr:hover {
+            background-color: var(--light-blue) !important;
+            transition: background-color 0.2s ease !important;
+        }
+        /* Professional metrics styling */
+        .metric-card {
+            background: linear-gradient(135deg, white 0%, #f8f9fa 100%) !important;
+            border: 1px solid #e9ecef !important;
+            border-radius: 10px !important;
+            padding: 20px !important;
+            margin: 10px 0 !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+            transition: transform 0.2s ease !important;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12) !important;
+        }
+        
+        /* Enhanced main content area */
+        .main .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%) !important;
+        }
+        
+        /* Professional headers */
+        h1, h2, h3 {
+            font-family: 'Inter', sans-serif !important;
+            color: var(--primary-blue) !important;
+            font-weight: 600 !important;
+        }
+        
+        /* Sidebar enhancements */
+        .css-1d391kg h2 {
+            color: var(--primary-blue) !important;
+            font-weight: 700 !important;
+            font-size: 1.2rem !important;
+            margin-bottom: 1rem !important;
+            padding-bottom: 0.5rem !important;
+            border-bottom: 2px solid var(--accent-blue) !important;
+        }
+        
+        /* Professional info boxes */
+        .stAlert {
+            border-radius: 8px !important;
+            border-left: 4px solid var(--accent-blue) !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        
+        /* Success alerts */
+        .stAlert[data-baseweb="notification"] {
+            background-color: #d4edda !important;
+            border-left-color: var(--success-green) !important;
+        }
+        
+        /* Warning alerts */
+        .stAlert[data-baseweb="notification"]:has([data-testid="warning"]) {
+            background-color: #fff3cd !important;
+            border-left-color: var(--warning-orange) !important;
+        }
+        
+        /* Error alerts */
+        .stAlert[data-baseweb="notification"]:has([data-testid="error"]) {
+            background-color: #f8d7da !important;
+            border-left-color: var(--danger-red) !important;
         }
         </style>
         """
@@ -1027,6 +1164,14 @@ class MonitoringDashboard:
         selected_subsection = current_subsection_key
         
         st.sidebar.subheader("🏠 Navigation Tree")
+        
+        # Add Home button to return to welcome page
+        if st.sidebar.button("🏠 Bridges M&O Status Home", key="home_button", help="Return to welcome page"):
+            # Clear all session state to return to welcome page
+            for key in list(st.session_state.keys()):
+                if key.startswith(('selected_', 'expanded_')):
+                    del st.session_state[key]
+            st.rerun()
         
         # Define all main sections with their details - Reordered per user request
         main_sections = [
@@ -1362,60 +1507,127 @@ class MonitoringDashboard:
 
     def render_content_placeholder(self) -> None:
         """Render improved placeholder content when no subsection is selected."""
-        # Main title with better styling
+        # Override global h1 styles for our header
         st.markdown("""
-        <div style="text-align: center; padding: 20px;">
-        <h1 style="color: #1f4e79;">📊 Monitoring Dashboard</h1>
-        <p style="font-size: 18px; color: #666;">Real-time Excel Data Analysis & Monitoring</p>
+        <style>
+        .dashboard-header h1 {
+            color: white !important;
+        }
+        .dashboard-header p {
+            color: white !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Professional dashboard header
+        st.markdown("""
+        <div class="dashboard-header" style="
+            background: linear-gradient(135deg, #1f4e79 0%, #2d5aa0 50%, #4a90e2 100%);
+            color: white;
+            padding: 40px 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 24px rgba(31, 78, 121, 0.3);
+        ">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                <div style="
+                    background: rgba(255,255,255,0.2);
+                    border-radius: 50%;
+                    padding: 15px;
+                    margin-right: 20px;
+                ">
+                    <span style="font-size: 2.5rem;">📊</span>
+                </div>
+                <div>
+                    <h1 style="
+                        margin: 0;
+                        font-size: 2.5rem;
+                        font-weight: 700;
+                        font-family: 'Inter', sans-serif;
+                        color: white !important;
+                        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+                    ">Bridges M&O Status</h1>
+                    <p style="
+                        margin: 5px 0 0 0;
+                        font-size: 1.2rem;
+                        color: white !important;
+                        opacity: 0.9;
+                        font-weight: 300;
+                    ">Maintenance & Operations Monitoring Platform</p>
+                </div>
+            </div>
+            <div style="
+                background: rgba(255,255,255,0.1);
+                border-radius: 8px;
+                padding: 15px;
+                margin-top: 20px;
+            ">
+                <p style="
+                    margin: 0;
+                    font-size: 1rem;
+                    opacity: 0.95;
+                ">Real-time Excel Data Analysis • Advanced Reporting • Performance Monitoring</p>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Quick start guide
-        col1, col2, col3 = st.columns([1, 2, 1])
+        # Simple welcome content to avoid HTML display issues
+        st.markdown("---")
+        st.markdown("## 🚀 Welcome to Your Dashboard")
         
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.info("📈 **Real-time Analytics**\n\nMonitor your data in real-time with dynamic updates.")
+            
         with col2:
-            st.markdown("""
-            <div style="background-color: #f8f9ff; padding: 20px; border-radius: 10px; border-left: 5px solid #4CAF50;">
-            <h3 style="color: #1f4e79; margin-top: 0;">� Quick Start Guide</h3>
+            st.success("🔍 **Advanced Monitoring**\n\nTrack performance metrics and identify trends.")
             
-            <div style="margin: 15px 0;">
-            <h4 style="color: #2e7d32; margin-bottom: 8px;">Step 1: Choose Date Range</h4>
-            <p style="margin: 0; font-size: 14px;">📅 Use the sidebar to select how much data to show (current week, previous weeks, etc.)</p>
-            </div>
-            
-            <div style="margin: 15px 0;">
-            <h4 style="color: #2e7d32; margin-bottom: 8px;">Step 2: Select Dashboard Section</h4>
-            <p style="margin: 0; font-size: 14px;">👈 Click any section in the sidebar - start with "🚨 100 Error Counts"</p>
-            </div>
-            
-            <div style="margin: 15px 0;">
-            <h4 style="color: #2e7d32; margin-bottom: 8px;">Step 3: Expand for Details</h4>
-            <p style="margin: 0; font-size: 14px;">▶️ Click the arrow icons to expand sections and see your data</p>
-            </div>
-            </div>
-            """, unsafe_allow_html=True)
+        with col3:
+            st.warning("📊 **Interactive Reports**\n\nGenerate detailed reports with visualizations.")
         
         st.markdown("---")
         
-        # Dashboard sections overview
+        # Quick start guide using simple markdown
+        st.markdown("### 📋 Quick Start Guide")
+        
+        st.markdown("""
+        **Step 1: Choose Date Range** 📅  
+        Use the sidebar to select how much data to show (current week, previous weeks, etc.)
+        
+        **Step 2: Select Dashboard Section** 👈  
+        Click any section in the sidebar - start with "🚨 100 Error Counts"
+        
+        **Step 3: Expand for Details** ▶️  
+        Click the arrow icons to expand sections and see your data
+        """)
+        
+        # Available Dashboard Sections
         st.markdown("### 📋 Available Dashboard Sections")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("""
-            **🔴 High Priority Monitoring:**
-            - 🚨 **100 Error Counts** - Session timeouts & errors
-            - 👥 **User Impact** - Daily user impact status
-            - ⚡ **Extra Batch Connections** - Connection monitoring
+            st.error("""
+            **🔴 High Priority Monitoring**
+            
+            🚨 **100 Error Counts** - Session timeouts & errors
+            
+            👥 **User Impact** - Daily user impact status
+            
+            ⚡ **Extra Batch Connections** - Connection monitoring
             """)
             
         with col2:
-            st.markdown("""
-            **📊 Business Intelligence:**
-            - 📈 **Benefit Issuance** - FAP, FIP, SDA tracking
-            - 📧 **Correspondence** - Tango monitoring & uploads
-            - 🔄 **Mass Update** - System update tracking
+            st.info("""
+            **📊 Business Intelligence**
+            
+            📈 **Benefit Issuance** - FAP, FIP, SDA tracking
+            
+            📧 **Correspondence** - Tango monitoring & uploads
+            
+            🔄 **Mass Update** - System update tracking
             """)
         
         # Features highlight
@@ -1448,12 +1660,42 @@ class MonitoringDashboard:
             - Real-time filtering
             """)
         
-        # Call to action
-        st.markdown("---")
+        # Professional call to action
         st.markdown("""
-        <div style="text-align: center; background-color: #e3f2fd; padding: 15px; border-radius: 8px;">
-        <h4 style="color: #1565c0; margin: 0;">Ready to Get Started? 👆</h4>
-        <p style="margin: 8px 0 0 0; color: #1976d2;">Click "🚨 100 Error Counts" in the sidebar to begin exploring your data!</p>
+        <div style="
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 50%, #0d47a1 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin: 40px 0 20px 0;
+            box-shadow: 0 8px 24px rgba(25, 118, 210, 0.3);
+        ">
+            <div style="
+                background: rgba(255,255,255,0.1);
+                border-radius: 50%;
+                width: 60px;
+                height: 60px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 20px auto;
+                font-size: 1.5rem;
+            ">🚀</div>
+            <h3 style="margin: 0 0 15px 0; font-weight: 600; font-size: 1.5rem;">Ready to Get Started?</h3>
+            <p style="margin: 0 0 20px 0; font-size: 1.1rem; opacity: 0.9;">
+                Click <strong>"🚨 100 Error Counts"</strong> in the sidebar to begin exploring your data!
+            </p>
+            <div style="
+                background: rgba(255,255,255,0.1);
+                border-radius: 8px;
+                padding: 12px 20px;
+                display: inline-block;
+                font-size: 0.9rem;
+                margin-top: 10px;
+            ">
+                👈 Start with the sidebar navigation
+            </div>
         </div>
         """, unsafe_allow_html=True)
     
