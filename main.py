@@ -1175,16 +1175,16 @@ class MonitoringDashboard:
         
         # Define all main sections with their details - Reordered per user request
         main_sections = [
-            {"key": "error_counts", "icon": "�", "name": "100 Error Counts", "has_subsections": True},
-            {"key": "user_impact", "icon": "�", "name": "User Impact", "has_subsections": True},
-            {"key": "benefit_issuance", "icon": "�", "name": "Benefit Issuance", "has_subsections": True},
-            {"key": "correspondence_tango", "icon": "�", "name": "Correspondence", "has_subsections": True},
+            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
+            {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True},
+            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True},
+            {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True},
             {"key": "mass_update", "icon": "🔄", "name": "Mass Update", "has_subsections": False},
             {"key": "interfaces", "icon": "🔗", "name": "Interfaces", "has_subsections": False},
             {"key": "extra_batch_connections", "icon": "⚡", "name": "Extra Batch Connections", "has_subsections": False},
             {"key": "hung_threads", "icon": "🧵", "name": "Hung Threads", "has_subsections": False},
             {"key": "online_exceptions_prd", "icon": "🌐", "name": "Online Exceptions - PRD", "has_subsections": False},
-            {"key": "batch_exceptions_prd", "icon": "�", "name": "Batch Exceptions - PRD", "has_subsections": False},
+            {"key": "batch_exceptions_prd", "icon": "💻", "name": "Batch Exceptions - PRD", "has_subsections": False},
             {"key": "online_exceptions_uat", "icon": "🧪", "name": "Online Exceptions - UAT", "has_subsections": False},
             {"key": "batch_exceptions_uat", "icon": "🔬", "name": "Batch Exceptions - UAT", "has_subsections": False}
         ]
