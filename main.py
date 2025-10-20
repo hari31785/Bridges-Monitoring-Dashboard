@@ -1165,14 +1165,6 @@ class MonitoringDashboard:
         
         st.sidebar.subheader("🏠 Navigation Tree")
         
-        # Add Home button to return to welcome page
-        if st.sidebar.button("🏠 Bridges M&O Status Home", key="home_button", help="Return to welcome page"):
-            # Clear all session state to return to welcome page
-            for key in list(st.session_state.keys()):
-                if key.startswith(('selected_', 'expanded_')):
-                    del st.session_state[key]
-            st.rerun()
-        
         # Define all main sections with their details - Reordered per user request
         main_sections = [
             {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
@@ -1205,20 +1197,31 @@ class MonitoringDashboard:
                 button_text = f"{expand_symbol} {section_icon} {section_name}"
                 if st.sidebar.button(button_text, 
                                    key=f"expand_{section_key}", 
-                                   help="Expand/Collapse section",
+                                   help="Select section and show subsections",
                                    use_container_width=True):
-                    if is_expanded:
-                        st.session_state.expanded_sections.discard(section_key)
-                    else:
+                    # Always select the section first
+                    prev_section = st.session_state.get('selected_section', None)
+                    if prev_section != section_key:
+                        # Clear all section-related state when switching sections
+                        for key in list(st.session_state.keys()):
+                            if key.startswith(('selected_', 'current_', 'clicked_', 'data_', 'df_')):
+                                del st.session_state[key]
+                    
+                    # Set the selected section
+                    st.session_state.selected_section = section_key
+                    st.session_state.selected_subsection = None  # Clear subsection to show section home page
+                    
+                    # Always expand the clicked section and collapse others
+                    # This ensures subsections are always visible when you click a main section
+                    # and keeps the navigation clean by showing only one expanded section at a time
+                    if prev_section != section_key:
+                        # Switching to a different section - collapse all others and expand this one
+                        st.session_state.expanded_sections.clear()
                         st.session_state.expanded_sections.add(section_key)
-                        # Clear previous selections when switching to a different section
-                        prev_section = st.session_state.get('selected_section', None)
-                        if prev_section != section_key:
-                            # Clear all section-related state when switching sections
-                            for key in list(st.session_state.keys()):
-                                if key.startswith(('selected_', 'current_', 'clicked_', 'data_', 'df_')):
-                                    del st.session_state[key]
-                            st.session_state.selected_section = section_key
+                    else:
+                        # Clicking on the same section - always ensure it's expanded
+                        st.session_state.expanded_sections.add(section_key)
+                    
                     st.rerun()
                 
                 # Show subsections if expanded
@@ -1422,7 +1425,7 @@ class MonitoringDashboard:
             file_icons = {
                 "FAP Daily Issuance": "💳",
                 "FIP Daily Issuance": "🏦", 
-                "SDA Daily Client Payments": "�"
+                "SDA Daily Client Payments": "💰"
             }
             
 # Old code removed - now handled by loop above
@@ -1443,7 +1446,7 @@ class MonitoringDashboard:
                 "error_counts": "🚨 100 Error Counts",
                 "user_impact": "👥 User Impact",
                 "mass_update": "🔄 Mass Update",
-                "interfaces": "� Interfaces",
+                "interfaces": "🔗 Interfaces",
                 "extra_batch_connections": "⚡ Extra Batch Connections",
                 "hung_threads": "🧵 Hung Threads",
                 "online_exceptions_prd": "🌐 Online Exceptions - PRD",
@@ -1831,6 +1834,18 @@ class MonitoringDashboard:
         </div>
         """, unsafe_allow_html=True)
         
+        # Add prominent home button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🏠 Return to Bridges M&O Status Home", key="section_home_button", help="Return to main welcome page", use_container_width=True):
+                # Clear all session state to return to welcome page
+                for key in list(st.session_state.keys()):
+                    if key.startswith(('selected_', 'expanded_')):
+                        del st.session_state[key]
+                st.rerun()
+        
+        st.markdown("---")
+        
         # Section features
         st.markdown("### 🔧 Key Features")
         
@@ -1987,6 +2002,18 @@ class MonitoringDashboard:
         title = section_titles.get(selected_section, {}).get(selected_period, f"{selected_section.replace('_', ' ').title()} Dashboard" if selected_section else "Dashboard")
         st.title(title)
         
+        # Add home button on data pages
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🏠 Return to Bridges M&O Status Home", key="data_home_button", help="Return to main welcome page", use_container_width=True):
+                # Clear all session state to return to welcome page
+                for key in list(st.session_state.keys()):
+                    if key.startswith(('selected_', 'expanded_')):
+                        del st.session_state[key]
+                st.rerun()
+        
+        st.markdown("---")
+        
         # Section-specific content routing
         section_handlers = {
             "benefit_issuance": self.render_benefit_issuance_content,
@@ -2018,7 +2045,7 @@ class MonitoringDashboard:
         # Only show data if a specific file is selected
         if not selected_subsection:
             # Show selection message when no file is selected
-            st.info("� Click on a dashboard item in the sidebar to view its contents")
+            st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
         # Filters in main area with expander
@@ -2660,7 +2687,7 @@ class MonitoringDashboard:
         # Only show data if a specific file is selected
         if not selected_subsection:
             # Show selection message when no file is selected
-            st.info("� Click on a dashboard item in the sidebar to view its contents")
+            st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
         # Filters in main area with expander
@@ -2697,7 +2724,7 @@ class MonitoringDashboard:
         self.metrics_component.auto_metrics(filtered_df)
         
         # Additional analysis tabs
-        tab1, tab2, tab3 = st.tabs(["� Charts", "📊 Statistics", "🔬 Analysis"])
+        tab1, tab2, tab3 = st.tabs(["📈 Charts", "📊 Statistics", "🔬 Analysis"])
         
         with tab1:
             self.render_charts(filtered_df, selected_period, key_prefix="correspondence_general_")
@@ -2813,7 +2840,7 @@ class MonitoringDashboard:
         # Only show data if a specific file is selected
         if not selected_subsection:
             # Show selection message when no file is selected
-            st.info("� Click on a dashboard item in the sidebar to view its contents")
+            st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
         with st.expander("🚨 **Error Filters**", expanded=False):
@@ -2827,12 +2854,12 @@ class MonitoringDashboard:
         filtered_df = format_dataframe_dates(filtered_df)
         
         # Data Table - Main Focus
-        st.header("� Data Table")
+        st.header("📋 Data Table")
         file_display_name = f"{selected_subsection} Data"
         self.table_component.data_table(filtered_df, file_display_name)
         
         # Key Metrics - Below Data Table
-        st.header(f"� Key Metrics")
+        st.header(f"📊 Key Metrics")
         self.render_error_metrics(filtered_df)
         
         # Additional analysis tabs
@@ -2853,7 +2880,7 @@ class MonitoringDashboard:
         # Only show data if a specific file is selected
         if not selected_subsection:
             # Show selection message when no file is selected
-            st.info("� Click on a dashboard item in the sidebar to view its contents")
+            st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
         with st.expander("👥 **Impact Filters**", expanded=False):
@@ -2867,12 +2894,12 @@ class MonitoringDashboard:
         filtered_df = format_dataframe_dates(filtered_df)
         
         # Data Table - Main Focus
-        st.header("� Data Table")
+        st.header("📋 Data Table")
         file_display_name = f"{selected_subsection} Data"
         self.table_component.data_table(filtered_df, file_display_name)
         
         # Key Metrics - Below Data Table
-        st.header(f"� Key Metrics")
+        st.header(f"📊 Key Metrics")
         self.render_user_impact_metrics(filtered_df)
         
         # Additional analysis tabs
@@ -3551,8 +3578,8 @@ class MonitoringDashboard:
                     - 📊 **Interactive Charts**: Line, bar, scatter, pie charts and more
                     - 🔍 **Smart Filters**: Automatic filtering for all data types  
                     - 📈 **Key Metrics**: Auto-generated insights from your data
-                    - � **Data Tables**: Sortable and searchable data views
-                    - � **Analysis Tools**: Correlation, distribution, and statistical analysis
+                    - 📋 **Data Tables**: Sortable and searchable data views
+                    - 🔬 **Analysis Tools**: Correlation, distribution, and statistical analysis
                     """)
         
         except Exception as e:
