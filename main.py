@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 # Add src directory to path for imports
@@ -261,6 +261,104 @@ def format_percentage_columns(df):
     
     return df_formatted
 
+
+def filter_data_to_recent_weeks(df, date_column=None, weeks_to_show=None):
+    """
+    Filter DataFrame to show only data from current week and previous week(s).
+    
+    Args:
+        df: pandas DataFrame
+        date_column: Name of the date column to filter by. If None, auto-detect.
+        weeks_to_show: Number of weeks to show. If None, uses session state value.
+        
+    Returns:
+        DataFrame filtered to recent weeks
+    """
+    if df is None or len(df) == 0:
+        return df
+    
+    # Get weeks_to_show from session state if not provided
+    if weeks_to_show is None:
+        weeks_to_show = st.session_state.get('weeks_to_show', 2)
+    
+    df_filtered = df.copy()
+    
+    # Auto-detect date column if not specified
+    if date_column is None:
+        date_columns = []
+        for col in df_filtered.columns:
+            col_lower = col.lower()
+            # Skip obvious non-date columns
+            non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread']
+            if any(keyword in col_lower for keyword in non_date_keywords):
+                continue
+                
+            # Check if column name suggests it's a date
+            if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']):
+                date_columns.append(col)
+        
+        # Use the first date column found
+        date_column = date_columns[0] if date_columns else None
+    
+    if date_column is None or date_column not in df_filtered.columns:
+        # No date column found, return original data
+        return df_filtered
+    
+    try:
+        # Convert date column to datetime
+        df_filtered[date_column] = pd.to_datetime(df_filtered[date_column], errors='coerce')
+        
+        # Calculate date range for filtering - ensure we include complete weeks
+        today = datetime.now()
+        
+        # Get the start of current week (Monday)
+        days_since_monday = today.weekday()  # Monday = 0, Sunday = 6
+        current_week_start = today - timedelta(days=days_since_monday)
+        
+        # Set time to start of day for consistent comparison
+        current_week_start = current_week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Calculate how many complete weeks back to include
+        # If weeks_to_show = 2, we want current week + 1 previous complete week
+        weeks_back = weeks_to_show - 1
+        filter_start_date = current_week_start - timedelta(weeks=weeks_back)
+        
+        # For better clarity: if today is Wednesday and we want 2 weeks,
+        # we should get all data from Monday of last week through today
+        
+        # Filter data to include only recent weeks
+        mask = df_filtered[date_column] >= filter_start_date
+        df_filtered = df_filtered[mask]
+        
+        # Add debug info in expandable section
+        with st.expander("📅 Date Filtering Info", expanded=False):
+            st.write(f"**Date Column Used:** {date_column}")
+            st.write(f"**Today:** {today.strftime('%A, %Y-%m-%d')}")
+            st.write(f"**Current Week Start (Monday):** {current_week_start.strftime('%A, %Y-%m-%d')}")
+            st.write(f"**Filter Start Date:** {filter_start_date.strftime('%A, %Y-%m-%d')} (showing last {weeks_to_show} weeks)")
+            st.write(f"**Records Before Filtering:** {len(df)}")
+            st.write(f"**Records After Filtering:** {len(df_filtered)}")
+            
+            if len(df_filtered) > 0:
+                min_date = df_filtered[date_column].min()
+                max_date = df_filtered[date_column].max()
+                st.write(f"**Date Range in Filtered Data:** {min_date.strftime('%A, %Y-%m-%d')} to {max_date.strftime('%A, %Y-%m-%d')}")
+                
+                # Show example of what weeks are included
+                st.write("**Weeks Included:**")
+                for i in range(weeks_to_show):
+                    week_start = current_week_start - timedelta(weeks=i)
+                    week_end = week_start + timedelta(days=6)
+                    week_label = "Current Week" if i == 0 else f"{i} Week{'s' if i > 1 else ''} Ago"
+                    st.write(f"• {week_label}: {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}")
+        
+        return df_filtered
+        
+    except Exception as e:
+        st.warning(f"Could not filter dates in column '{date_column}': {str(e)}")
+        return df_filtered
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -286,13 +384,13 @@ class MonitoringDashboard:
             initial_sidebar_state="expanded"
         )
     
-    def auto_load_excel_file(self, section: str = "benefit_issuance", period: str = "daily", subsection: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def auto_load_excel_file(self, section: str = "error_counts", period: str = "daily", subsection: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Automatically detect and load Excel files based on section, period, and subsection.
         
         Args:
-            section: The selected section (benefit_issuance, etc.)
+            section: The selected section (error_counts, benefit_issuance, etc.)
             period: The selected time period (daily, weekly, monthly, yearly)
-            subsection: The selected subsection/file name (for benefit_issuance)
+            subsection: The selected subsection/file name (for sections with multiple files)
         
         Returns:
             Dictionary with file configuration or None if no files found
@@ -651,6 +749,8 @@ class MonitoringDashboard:
                 # If no specific date provided, load first sheet
                 if date_str is None:
                     df = loader.load_data()
+                    # Apply date filtering to show only recent weeks
+                    df = filter_data_to_recent_weeks(df)
                     return df
                 
                 # Convert date string to sheet name format
@@ -659,12 +759,16 @@ class MonitoringDashboard:
                 # Try to load from the specific sheet
                 try:
                     df = loader.load_data(sheet_name=sheet_name)
+                    # Apply date filtering to show only recent weeks
+                    df = filter_data_to_recent_weeks(df)
                     logger.info(f"Loaded upload status data from sheet: {sheet_name}")
                     return df
                 except Exception as sheet_error:
                     logger.warning(f"Could not load from sheet '{sheet_name}': {sheet_error}")
                     # Fallback to first sheet
                     df = loader.load_data()
+                    # Apply date filtering to show only recent weeks
+                    df = filter_data_to_recent_weeks(df)
                     logger.info("Loaded upload status data from default sheet")
                     return df
                     
@@ -765,6 +869,26 @@ class MonitoringDashboard:
         st.sidebar.title("📊 Dashboard Navigation")
         st.sidebar.markdown("---")
         
+        # Date filtering control
+        st.sidebar.subheader("📅 Date Filter")
+        weeks_to_show = st.sidebar.selectbox(
+            "Show data from:",
+            options=[1, 2, 3, 4],
+            index=1,  # Default to 2 weeks (current + previous)
+            format_func=lambda x: {
+                1: "Current week only",
+                2: "Current + Previous week", 
+                3: "Current + 2 Previous weeks",
+                4: "Current + 3 Previous weeks"
+            }[x],
+            help="Filter data to show only recent complete weeks (Monday to Sunday)"
+        )
+        
+        # Store in session state for use in filtering
+        st.session_state['weeks_to_show'] = weeks_to_show
+        
+        st.sidebar.markdown("---")
+        
         # Add simple CSS for clear button styling with smaller sub-menu items and enhanced table headers
         tree_css = """
         <style>            
@@ -854,7 +978,7 @@ class MonitoringDashboard:
             st.session_state.expanded_sections = set()
         
         # Get current selections from session state
-        current_section_key = st.session_state.get('selected_section', 'benefit_issuance')
+        current_section_key = st.session_state.get('selected_section', 'error_counts')
         current_period_key = st.session_state.get('selected_period', 'daily')
         current_subsection_key = st.session_state.get('selected_subsection', None)
         
@@ -863,12 +987,12 @@ class MonitoringDashboard:
         
         st.sidebar.subheader("🏠 Navigation Tree")
         
-        # Define all main sections with their details
+        # Define all main sections with their details - Reordered per user request
         main_sections = [
-            {"key": "benefit_issuance", "icon": "📊", "name": "Benefit Issuance", "has_subsections": True},
-            {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True},
-            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
-            {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True},
+            {"key": "error_counts", "icon": "�", "name": "100 Error Counts", "has_subsections": True},
+            {"key": "user_impact", "icon": "�", "name": "User Impact", "has_subsections": True},
+            {"key": "benefit_issuance", "icon": "�", "name": "Benefit Issuance", "has_subsections": True},
+            {"key": "correspondence_tango", "icon": "�", "name": "Correspondence", "has_subsections": True},
             {"key": "mass_update", "icon": "🔄", "name": "Mass Update", "has_subsections": False},
             {"key": "interfaces", "icon": "🔗", "name": "Interfaces", "has_subsections": False},
             {"key": "extra_batch_connections", "icon": "⚡", "name": "Extra Batch Connections", "has_subsections": False},
@@ -1185,6 +1309,9 @@ class MonitoringDashboard:
         
         # Apply standardized date formatting to all date columns
         df = format_dataframe_dates(df)
+        
+        # Filter to show only current week and previous week data
+        df = filter_data_to_recent_weeks(df)
         
         # Filter data based on selected period
         filtered_by_period_df = self.filter_data_by_period(df, selected_period)
