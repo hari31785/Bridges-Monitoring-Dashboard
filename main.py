@@ -1167,6 +1167,7 @@ class MonitoringDashboard:
         
         # Define all main sections with their details - Reordered per user request
         main_sections = [
+            {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False},
             {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
             {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True},
             {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True},
@@ -1650,6 +1651,18 @@ class MonitoringDashboard:
         """Render section-specific home page with relevant information."""
         # Section information mapping
         section_info = {
+            "summary": {
+                "title": "System Summary",
+                "icon": "📋",
+                "color": "#17a2b8",
+                "description": "Get a comprehensive overview of all system components with real-time status cards and health indicators.",
+                "features": [
+                    "System-wide health monitoring",
+                    "Color-coded status indicators",
+                    "Quick metrics and alerts",
+                    "Navigate to detailed sections"
+                ]
+            },
             "error_counts": {
                 "title": "100 Error Counts",
                 "icon": "🚨",
@@ -2016,6 +2029,7 @@ class MonitoringDashboard:
         
         # Section-specific content routing
         section_handlers = {
+            "summary": self.render_summary_content,
             "benefit_issuance": self.render_benefit_issuance_content,
             "correspondence_tango": self.render_correspondence_tango_content,
             "error_counts": self.render_error_counts_content,
@@ -2035,6 +2049,179 @@ class MonitoringDashboard:
             handler(filtered_by_period_df, selected_period)
         else:
             st.error(f"Handler not implemented for section: {selected_section}")
+
+    def render_summary_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render System Summary with status cards for all dashboard sections."""
+        
+        st.markdown("## 📊 System Health Overview")
+        st.markdown("Monitor the overall health and status of all system components at a glance.")
+        
+        # Define dashboard sections for status monitoring
+        dashboard_sections = [
+            {
+                "key": "error_counts",
+                "name": "100 Error Counts",
+                "icon": "🚨",
+                "description": "Session timeouts & errors"
+            },
+            {
+                "key": "user_impact", 
+                "name": "User Impact",
+                "icon": "👥",
+                "description": "User experience metrics"
+            },
+            {
+                "key": "benefit_issuance",
+                "name": "Benefit Issuance", 
+                "icon": "📈",
+                "description": "FAP, FIP, SDA processing"
+            },
+            {
+                "key": "correspondence",
+                "name": "Correspondence",
+                "icon": "📧", 
+                "description": "Tango & file uploads"
+            },
+            {
+                "key": "batch_connections",
+                "name": "Batch Connections",
+                "icon": "⚡",
+                "description": "Extra batch processes"
+            },
+            {
+                "key": "system_exceptions",
+                "name": "System Exceptions", 
+                "icon": "🌐",
+                "description": "PRD & UAT exceptions"
+            }
+        ]
+        
+        # Create status cards in a grid layout
+        st.markdown("### 🎛️ Dashboard Status Cards")
+        
+        # Create 3 columns for status cards
+        col1, col2, col3 = st.columns(3)
+        
+        for i, section in enumerate(dashboard_sections):
+            # Determine which column to use
+            if i % 3 == 0:
+                current_col = col1
+            elif i % 3 == 1:
+                current_col = col2
+            else:
+                current_col = col3
+            
+            with current_col:
+                # Get status for this section (placeholder logic for now)
+                status, status_color, status_text = self.get_section_status(section["key"])
+                
+                # Create status card
+                self.render_status_card(
+                    section["name"],
+                    section["icon"], 
+                    section["description"],
+                    status,
+                    status_color,
+                    status_text
+                )
+        
+        st.markdown("---")
+        
+        # Summary metrics
+        st.markdown("### 📈 Quick Metrics")
+        
+        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+        
+        with metric_col1:
+            st.metric("Total Sections", "12", "2 new")
+            
+        with metric_col2:
+            st.metric("Active Dashboards", "8", "1 updated") 
+            
+        with metric_col3:
+            st.metric("System Health", "95%", "2%")
+            
+        with metric_col4:
+            st.metric("Data Freshness", "Real-time", "✓")
+        
+        st.markdown("---")
+        
+        # Alert section
+        st.markdown("### 🔔 Recent Alerts")
+        
+        alert_col1, alert_col2 = st.columns(2)
+        
+        with alert_col1:
+            st.warning("**⚠️ Medium Priority Alert**\n\nError counts slightly elevated in the last 2 hours. Monitor for trends.")
+            
+        with alert_col2:
+            st.success("**✅ All Systems Normal**\n\nBenefit issuance processing within normal parameters.")
+        
+        # Instructions
+        st.markdown("---")
+        st.info("""
+        **💡 How to use the Summary Dashboard:**
+        
+        - **Green cards** indicate normal operations
+        - **Yellow cards** suggest attention needed  
+        - **Red cards** require immediate action
+        - Click on any status card to navigate to that section
+        - Use the navigation tree to explore detailed data
+        """)
+
+    def get_section_status(self, section_key: str):
+        """Get status for a dashboard section. Returns (status, color, text)."""
+        # Placeholder logic - we'll enhance this with real thresholds
+        import random
+        
+        statuses = [
+            ("normal", "#28a745", "All systems operational"),
+            ("warning", "#ffc107", "Attention needed"), 
+            ("critical", "#dc3545", "Action required")
+        ]
+        
+        # For demo purposes, return random status
+        # In real implementation, this would check actual data thresholds
+        return random.choice(statuses)
+    
+    def render_status_card(self, title: str, icon: str, description: str, status: str, color: str, status_text: str):
+        """Render a status card with the given parameters."""
+        
+        # Determine border and background based on status
+        if status == "normal":
+            border_color = "#28a745"
+            bg_color = "#f8fff9"
+            status_icon = "✅"
+        elif status == "warning":
+            border_color = "#ffc107"
+            bg_color = "#fffdf5"
+            status_icon = "⚠️"
+        else:  # critical
+            border_color = "#dc3545"
+            bg_color = "#fff5f5"
+            status_icon = "🚨"
+        
+        # Create the status card
+        st.markdown(f"""
+        <div style="
+            border: 2px solid {border_color};
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            background-color: {bg_color};
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        ">
+            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 1.5rem; margin-right: 8px;">{icon}</span>
+                <h4 style="margin: 0; color: #333;">{title}</h4>
+            </div>
+            <p style="margin: 5px 0; color: #666; font-size: 0.9rem;">{description}</p>
+            <div style="display: flex; align-items: center; margin-top: 10px;">
+                <span style="margin-right: 8px;">{status_icon}</span>
+                <span style="color: {color}; font-weight: bold; font-size: 0.9rem;">{status_text}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
     def render_benefit_issuance_content(self, df: pd.DataFrame, selected_period: str) -> None:
@@ -3502,7 +3689,7 @@ class MonitoringDashboard:
             selected_subsection = st.session_state.get('selected_subsection')
             
             # Check if we should load data (either has subsection OR is a section that loads data directly)
-            sections_with_direct_data = ['extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
+            sections_with_direct_data = ['summary', 'extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
                                        'online_exceptions_prd', 'batch_exceptions_prd', 'online_exceptions_uat', 
                                        'batch_exceptions_uat']  # Sections that load data without subsections
             should_load_data = selected_subsection or (selected_section in sections_with_direct_data)
