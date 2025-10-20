@@ -1,6 +1,7 @@
 """Main Streamlit dashboard application."""
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import sys
 from pathlib import Path
@@ -934,6 +935,23 @@ class MonitoringDashboard:
             --dark-gray: #343a40;
         }
         
+        /* Force content to always start from top */
+        .main .block-container {
+            padding-top: 1rem !important;
+            margin-top: 0 !important;
+            scroll-behavior: auto !important;
+        }
+        
+        .stApp > div:first-child {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
+        
+        /* Reset scroll position on page changes */
+        html, body {
+            scroll-behavior: auto !important;
+        }
+        
         /* Main navigation buttons with professional styling */
         .stButton > button {
             text-align: left !important;
@@ -1511,6 +1529,7 @@ class MonitoringDashboard:
 
     def render_content_placeholder(self) -> None:
         """Render section-specific content when no subsection is selected."""
+        
         # Get current selected section
         selected_section = st.session_state.get('selected_section')
         
@@ -1524,6 +1543,10 @@ class MonitoringDashboard:
     
     def render_welcome_page(self) -> None:
         """Render the main welcome page."""
+        
+        # Create an empty container at the very top to anchor content
+        st.empty()
+        
         # Override global h1 styles for our header
         st.markdown("""
         <style>
@@ -1969,6 +1992,9 @@ class MonitoringDashboard:
     
     def render_main_content_with_data(self, df: pd.DataFrame, nav_result: Dict[str, Any]) -> None:
         """Render main content with loaded data."""
+        
+
+        
         selected_section = nav_result.get("section")
         selected_period = nav_result.get("period")
         
@@ -2056,6 +2082,21 @@ class MonitoringDashboard:
         st.markdown("## 📊 System Health Overview")
         st.markdown("Monitor the overall health and status of all system components at a glance.")
         
+        # Add a small note about scrolling
+        st.info("💡 **Tip:** If the page doesn't start from the top, scroll up to see the full content.")
+        
+        # Add home button on Summary page
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🏠 Return to Bridges M&O Status Home", key="summary_home_button", help="Return to main welcome page", use_container_width=True):
+                # Clear all session state to return to welcome page
+                for key in list(st.session_state.keys()):
+                    if key.startswith(('selected_', 'expanded_')):
+                        del st.session_state[key]
+                st.rerun()
+        
+        st.markdown("---")
+        
         # Define dashboard sections for status monitoring
         dashboard_sections = [
             {
@@ -2097,7 +2138,12 @@ class MonitoringDashboard:
         ]
         
         # Create status cards in a grid layout
-        st.markdown("### 🎛️ Dashboard Status Cards")
+        st.markdown("### 🎛️ Bridges M&O Summary")
+        
+        # Display the most recent weekday date
+        recent_date = self.get_most_recent_weekday_date()
+        st.markdown(f"**Data as of:** {recent_date}")
+        st.markdown("")  # Add spacing
         
         # Create 3 columns for status cards
         col1, col2, col3 = st.columns(3)
@@ -2171,18 +2217,188 @@ class MonitoringDashboard:
 
     def get_section_status(self, section_key: str):
         """Get status for a dashboard section. Returns (status, color, text)."""
-        # Placeholder logic - we'll enhance this with real thresholds
-        import random
         
-        statuses = [
-            ("normal", "#28a745", "All systems operational"),
-            ("warning", "#ffc107", "Attention needed"), 
-            ("critical", "#dc3545", "Action required")
+        if section_key == "error_counts":
+            return self.get_error_counts_status()
+        else:
+            # For other sections, keep placeholder logic for now
+            import random
+            statuses = [
+                ("normal", "#28a745", "All systems operational"),
+                ("warning", "#ffc107", "Attention needed"), 
+                ("critical", "#dc3545", "Action required")
+            ]
+            return random.choice(statuses)
+    
+    def get_error_counts_status(self):
+        """Get status for 100 Error Counts based on real data and thresholds."""
+        try:
+            # Load the Daily 100 Error Counts Excel file
+            error_counts_path = Path(__file__).parent / "Monitoring Data Files" / "100 Error Counts" / "Daily 100 Error Counts.xlsx"
+            
+            if not error_counts_path.exists():
+                return ("warning", "#ffc107", "Data file not found")
+            
+            # Load the Excel file
+            from src.data_loader import ExcelDataLoader
+            loader = ExcelDataLoader(str(error_counts_path))
+            df = loader.load_data()
+            
+            if df.empty:
+                return ("warning", "#ffc107", "No data available")
+            
+            # Get the most recent weekday data
+            recent_data = self.get_most_recent_weekday_data(df)
+            
+            if recent_data is None:
+                return ("warning", "#ffc107", "No recent weekday data found")
+            
+            # Get total error count for the most recent weekday
+            total_count = self.calculate_total_error_count(recent_data)
+            
+            # Apply thresholds
+            if total_count > 750:
+                return ("critical", "#dc3545", f"High error count: {total_count}")
+            elif total_count >= 700:
+                return ("warning", "#ffc107", f"Moderate error count: {total_count}")
+            else:
+                return ("normal", "#28a745", f"Normal error count: {total_count}")
+                
+        except Exception as e:
+            return ("warning", "#ffc107", f"Error loading data: {str(e)}")
+    
+    def get_most_recent_weekday_data(self, df):
+        """Get the most recent weekday data from the dataframe."""
+        from datetime import datetime, timedelta
+        
+        # Find date columns in the dataframe
+        date_columns = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in ['date', 'day']):
+                date_columns.append(col)
+        
+        if not date_columns:
+            # If no date column found, return the last row
+            return df.iloc[-1] if len(df) > 0 else None
+        
+        # Convert date column to datetime
+        date_col = date_columns[0]
+        try:
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+            df = df.dropna(subset=[date_col])
+            
+            # Filter to weekdays only (Monday=0, Sunday=6)
+            df_weekdays = df[df[date_col].dt.dayofweek < 5]  # 0-4 are weekdays
+            
+            if df_weekdays.empty:
+                return df.iloc[-1] if len(df) > 0 else None
+            
+            # Get the most recent weekday
+            most_recent = df_weekdays.loc[df_weekdays[date_col].idxmax()]
+            return most_recent
+            
+        except Exception:
+            # If date parsing fails, return the last row
+            return df.iloc[-1] if len(df) > 0 else None
+    
+    def calculate_total_error_count(self, row_data):
+        """Calculate total error count from a row of data."""
+        
+        # First priority: Look for the exact "Total Count" column
+        for col, value in row_data.items():
+            if col.strip().lower() == "total count":
+                try:
+                    numeric_value = pd.to_numeric(value, errors='coerce')
+                    if pd.notna(numeric_value):
+                        return int(numeric_value)
+                except:
+                    continue
+        
+        # Second priority: Look for variations of total count columns
+        total_count_variations = [
+            'total count', 'totalcount', 'total_count', 'total counts',
+            'grand total', 'sum total', 'overall total'
         ]
         
-        # For demo purposes, return random status
-        # In real implementation, this would check actual data thresholds
-        return random.choice(statuses)
+        for col, value in row_data.items():
+            col_lower = col.lower().strip()
+            
+            # Skip date columns
+            if any(keyword in col_lower for keyword in ['date', 'day']):
+                continue
+            
+            # Look for total count variations
+            if any(variation in col_lower for variation in total_count_variations):
+                try:
+                    numeric_value = pd.to_numeric(value, errors='coerce')
+                    if pd.notna(numeric_value):
+                        return int(numeric_value)
+                except:
+                    continue
+        
+        # Third priority: Look for any column with "total" in the name
+        for col, value in row_data.items():
+            col_lower = col.lower().strip()
+            
+            # Skip date columns
+            if any(keyword in col_lower for keyword in ['date', 'day', 'time']):
+                continue
+            
+            # Look for any total column
+            if 'total' in col_lower:
+                try:
+                    numeric_value = pd.to_numeric(value, errors='coerce')
+                    if pd.notna(numeric_value):
+                        return int(numeric_value)
+                except:
+                    continue
+        
+        # Last resort: Return 0 if no suitable column found
+        return 0
+    
+    def get_most_recent_weekday_date(self):
+        """Get the date of the most recent weekday for display purposes."""
+        try:
+            # Load the Daily 100 Error Counts Excel file
+            error_counts_path = Path(__file__).parent / "Monitoring Data Files" / "100 Error Counts" / "Daily 100 Error Counts.xlsx"
+            
+            if not error_counts_path.exists():
+                return "Data not available"
+            
+            from src.data_loader import ExcelDataLoader
+            loader = ExcelDataLoader(str(error_counts_path))
+            df = loader.load_data()
+            
+            if df.empty:
+                return "No data available"
+            
+            # Get the most recent weekday data
+            recent_data = self.get_most_recent_weekday_data(df)
+            
+            if recent_data is None:
+                return "Date not available"
+            
+            # Find date column and extract the date
+            date_columns = []
+            for col in df.columns:
+                col_lower = col.lower()
+                if any(keyword in col_lower for keyword in ['date', 'day']):
+                    date_columns.append(col)
+            
+            if date_columns:
+                date_col = date_columns[0]
+                try:
+                    date_value = pd.to_datetime(recent_data[date_col], errors='coerce')
+                    if pd.notna(date_value):
+                        return date_value.strftime("%B %d, %Y")
+                except:
+                    pass
+            
+            return "Date parsing error"
+            
+        except Exception as e:
+            return f"Error: {str(e)}"
     
     def render_status_card(self, title: str, icon: str, description: str, status: str, color: str, status_text: str):
         """Render a status card with the given parameters."""
