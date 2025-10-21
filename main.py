@@ -246,11 +246,21 @@ def format_percentage_columns(df):
                     numeric_series = pd.to_numeric(df_formatted[col], errors='coerce')
                     
                     if has_percent_symbol:
-                        # For columns with "%" symbol, convert decimals to percentages
-                        # (0.04 → 4%, 0.95 → 95%)
-                        df_formatted[col] = numeric_series.apply(
-                            lambda x: f"{x * 100:.0f}%" if pd.notna(x) else ""
-                        )
+                        # For columns with "%" symbol, display values exactly as they appear in the source data
+                        # Only add the % symbol if not already present, preserve original precision
+                        def format_percentage_value(x):
+                            if pd.isna(x):
+                                return ""
+                            # Convert to string to preserve original precision from Excel
+                            str_val = str(x)
+                            # If the original value already contains %, return as-is
+                            if '%' in str_val:
+                                return str_val
+                            # Otherwise, just add % symbol without changing the number
+                            return f"{x}%"
+                        
+                        # Use original values, not the numeric_series which might alter precision
+                        df_formatted[col] = df_formatted[col].apply(format_percentage_value)
                     else:
                         # For other percentage-related columns, format as number with 2 decimal places
                         df_formatted[col] = numeric_series.apply(
@@ -2118,13 +2128,13 @@ class MonitoringDashboard:
                 "description": "FAP, FIP, SDA processing"
             },
             {
-                "key": "correspondence",
+                "key": "correspondence_tango",
                 "name": "Correspondence",
                 "icon": "📧", 
                 "description": "Tango & file uploads"
             },
             {
-                "key": "batch_connections",
+                "key": "extra_batch_connections",
                 "name": "Batch Connections",
                 "icon": "⚡",
                 "description": "Extra batch processes"
@@ -2220,6 +2230,8 @@ class MonitoringDashboard:
         
         if section_key == "error_counts":
             return self.get_error_counts_status()
+        elif section_key == "user_impact":
+            return self.get_user_impact_status()
         else:
             # For other sections, keep placeholder logic for now
             import random
@@ -2263,6 +2275,49 @@ class MonitoringDashboard:
                 return ("warning", "#ffc107", f"Moderate error count: {total_count}")
             else:
                 return ("normal", "#28a745", f"Normal error count: {total_count}")
+                
+        except Exception as e:
+            return ("warning", "#ffc107", f"Error loading data: {str(e)}")
+    
+    def get_user_impact_status(self):
+        """Get status for User Impact based on 0 Errors % column and thresholds."""
+        try:
+            # Load the Daily User Impact Status Excel file and process it the same way as the dashboard
+            user_impact_path = Path(__file__).parent / "Monitoring Data Files" / "User Impact" / "Daily User Impact Status.xlsx"
+            
+            if not user_impact_path.exists():
+                return ("warning", "#ffc107", "Data file not found")
+            
+            # Load and process the data exactly like the User Impact dashboard does
+            from src.data_loader import ExcelDataLoader
+            loader = ExcelDataLoader(str(user_impact_path))
+            df = loader.load_data()
+            
+            if df.empty:
+                return ("warning", "#ffc107", "No data available")
+            
+            # Process the data to add calculated percentage columns (same as render_user_impact_table)
+            processed_df = self.add_user_impact_percentage_columns(df.copy())
+            
+            # Get the most recent weekday data from the processed dataframe
+            recent_data = self.get_most_recent_weekday_data(processed_df)
+            
+            if recent_data is None:
+                return ("warning", "#ffc107", "No recent weekday data found")
+            
+            # Get the 0 Errors % value from the processed data
+            zero_errors_pct = self.get_zero_errors_percentage(recent_data)
+            
+            if zero_errors_pct is None:
+                return ("warning", "#ffc107", "0 Errors % column not found")
+            
+            # Apply thresholds based on user requirements
+            if zero_errors_pct < 89:
+                return ("critical", "#dc3545", f"Low success rate: {zero_errors_pct:.2f}%")
+            elif zero_errors_pct >= 89 and zero_errors_pct <= 90:
+                return ("warning", "#ffc107", f"Moderate success rate: {zero_errors_pct:.2f}%")
+            else:  # > 90%
+                return ("normal", "#28a745", f"Good success rate: {zero_errors_pct:.2f}%")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error loading data: {str(e)}")
@@ -2357,6 +2412,115 @@ class MonitoringDashboard:
         # Last resort: Return 0 if no suitable column found
         return 0
     
+    def get_zero_errors_percentage(self, row_data):
+        """Get the 0 Errors % value from a row of data."""
+        
+        # First priority: Look for the calculated "0 Errors %" column
+        for col, value in row_data.items():
+            col_stripped = col.strip()
+            if col_stripped == "0 Errors %" or col_stripped.lower() == "0 errors %":
+                try:
+                    # Handle string percentages like "92%" from our calculated columns
+                    if isinstance(value, str) and value.endswith('%'):
+                        clean_value = value.replace('%', '').strip()
+                        numeric_value = float(clean_value)
+                        return numeric_value
+                    else:
+                        numeric_value = pd.to_numeric(value, errors='coerce')
+                        if pd.notna(numeric_value):
+                            return float(numeric_value)
+                except:
+                    continue
+        
+        # Second priority: Calculate from raw data if percentage column not found
+        # Look for "0 Errors" and "# Logged-in Users" columns to calculate percentage
+        zero_errors_value = None
+        logged_in_users_value = None
+        
+        for col, value in row_data.items():
+            col_stripped = col.strip()
+            if col_stripped == "0 Errors":
+                try:
+                    zero_errors_value = pd.to_numeric(value, errors='coerce')
+                except:
+                    continue
+            elif col_stripped == "# Logged-in Users":
+                try:
+                    logged_in_users_value = pd.to_numeric(value, errors='coerce')
+                except:
+                    continue
+        
+        # Calculate percentage if we have both values
+        if (zero_errors_value is not None and logged_in_users_value is not None and 
+            pd.notna(zero_errors_value) and pd.notna(logged_in_users_value) and 
+            logged_in_users_value > 0):
+            percentage = (zero_errors_value / logged_in_users_value) * 100
+            return float(percentage)
+        
+        # If we couldn't find the data or calculate the percentage, return None
+        return None
+    
+    def add_user_impact_percentage_columns(self, df):
+        """Add calculated percentage columns to User Impact data, same as the dashboard."""
+        import pandas as pd
+        
+        # Define the error columns we're looking for
+        error_columns = ['0 errors', '1 errors', '2 errors', '3-5 errors', '6-10 errors', '>10 errors']
+        
+        # Find the logged-in users column
+        logged_in_users_col = None
+        for col in df.columns:
+            col_lower = col.lower().strip()
+            if 'logged' in col_lower and 'user' in col_lower:
+                logged_in_users_col = col
+                break
+        
+        if not logged_in_users_col:
+            return df  # Return original if no logged-in users column found
+        
+        # Work backwards through error columns to maintain correct positioning
+        cols = list(df.columns)
+        for error_col in reversed(error_columns):
+            # Find the actual column name (case-insensitive)
+            actual_error_col = None
+            for col in cols:
+                col_lower = col.lower().strip()
+                error_col_lower = error_col.lower()
+                if col_lower == error_col_lower or \
+                   (error_col_lower.replace(' ', '').replace('-', '') in col_lower.replace(' ', '').replace('-', '')):
+                    actual_error_col = col
+                    break
+            
+            if actual_error_col and actual_error_col in cols:
+                # Find the position to insert percentage column
+                error_col_idx = cols.index(actual_error_col)
+                
+                # Calculate percentage for this error column
+                error_pct = []
+                for idx, row in df.iterrows():
+                    try:
+                        error_count = pd.to_numeric(row[actual_error_col], errors='coerce')
+                        logged_users = pd.to_numeric(row[logged_in_users_col], errors='coerce')
+                        
+                        if pd.notna(error_count) and pd.notna(logged_users) and logged_users > 0:
+                            percentage = (error_count / logged_users) * 100
+                            error_pct.append(f"{percentage:.2f}%")
+                        else:
+                            error_pct.append("N/A")
+                    except Exception:
+                        error_pct.append("N/A")
+                
+                # Create percentage column name
+                pct_col_name = f"{actual_error_col} %"
+                
+                # Insert the new column after the error column
+                df.insert(error_col_idx + 1, pct_col_name, error_pct)
+                
+                # Update the cols list to reflect the new column
+                cols = list(df.columns)
+        
+        return df
+    
     def get_most_recent_weekday_date(self):
         """Get the date of the most recent weekday for display purposes."""
         try:
@@ -2417,7 +2581,7 @@ class MonitoringDashboard:
             bg_color = "#fff5f5"
             status_icon = "🚨"
         
-        # Create the status card
+        # Create the status card with fixed height for consistency
         st.markdown(f"""
         <div style="
             border: 2px solid {border_color};
@@ -2426,15 +2590,21 @@ class MonitoringDashboard:
             margin: 10px 0;
             background-color: {bg_color};
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            height: 140px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         ">
-            <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                <span style="font-size: 1.5rem; margin-right: 8px;">{icon}</span>
-                <h4 style="margin: 0; color: #333;">{title}</h4>
+            <div>
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 1.5rem; margin-right: 8px;">{icon}</span>
+                    <h4 style="margin: 0; color: #333; font-size: 1.1rem; line-height: 1.2;">{title}</h4>
+                </div>
+                <p style="margin: 5px 0; color: #666; font-size: 0.85rem; line-height: 1.3;">{description}</p>
             </div>
-            <p style="margin: 5px 0; color: #666; font-size: 0.9rem;">{description}</p>
-            <div style="display: flex; align-items: center; margin-top: 10px;">
+            <div style="display: flex; align-items: center; margin-top: auto;">
                 <span style="margin-right: 8px;">{status_icon}</span>
-                <span style="color: {color}; font-weight: bold; font-size: 0.9rem;">{status_text}</span>
+                <span style="color: {color}; font-weight: bold; font-size: 0.85rem; line-height: 1.2;">{status_text}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -3256,10 +3426,10 @@ class MonitoringDashboard:
         
         filtered_df = format_dataframe_dates(filtered_df)
         
-        # Data Table - Main Focus
+        # Data Table - Main Focus with calculated percentage columns
         st.header("📋 Data Table")
         file_display_name = f"{selected_subsection} Data"
-        self.table_component.data_table(filtered_df, file_display_name)
+        self.render_error_counts_table(filtered_df, file_display_name)
         
         # Key Metrics - Below Data Table
         st.header(f"📊 Key Metrics")
@@ -3296,10 +3466,10 @@ class MonitoringDashboard:
         
         filtered_df = format_dataframe_dates(filtered_df)
         
-        # Data Table - Main Focus
+        # Data Table - Main Focus (with original percentage values)
         st.header("📋 Data Table")
         file_display_name = f"{selected_subsection} Data"
-        self.table_component.data_table(filtered_df, file_display_name)
+        self.render_user_impact_table(filtered_df, file_display_name)
         
         # Key Metrics - Below Data Table
         st.header(f"📊 Key Metrics")
@@ -3521,6 +3691,321 @@ class MonitoringDashboard:
     def render_batch_exceptions_uat_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Batch Exceptions - UAT specific content."""
         self.render_generic_section_content(df, selected_period, "Batch Exceptions - UAT", "🔬")
+    
+    def render_user_impact_table(self, df: pd.DataFrame, title: str) -> None:
+        """Render User Impact table WITHOUT percentage formatting to preserve original values."""
+        import pandas as pd
+        
+        # Sort by date columns (latest to oldest)
+        df = sort_dataframe_by_date(df, ascending=False)
+        
+        # Apply date formatting to the dataframe (but NOT percentage formatting)
+        df = format_dataframe_dates(df)
+        
+        # Display table title
+        st.subheader(title)
+        
+        # Create a copy of the dataframe for display
+        display_df = df.copy()
+        
+        # Format currency columns only (Amt issued fields)
+        for col in display_df.columns:
+            col_lower = col.lower()
+            if 'amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower):
+                # Convert to numeric if needed and format as currency
+                try:
+                    # Convert to numeric, handling any string values
+                    display_df[col] = pd.to_numeric(display_df[col], errors='coerce')
+                    # Format as currency with 2 decimal places
+                    display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "")
+                except (ValueError, TypeError):
+                    # If conversion fails, try to format existing numeric values
+                    display_df[col] = display_df[col].apply(
+                        lambda x: f"${float(x):,.2f}" if pd.notna(x) and str(x).replace('.','').replace('-','').isdigit() else str(x)
+                    )
+        
+        # Find the logged in users column for percentage calculations
+        logged_in_users_col = None
+        possible_user_columns = []
+        
+        for col in display_df.columns:
+            col_lower = col.lower().strip()
+            # More flexible matching for user columns
+            if any(term in col_lower for term in ['user', 'login', 'logged']):
+                possible_user_columns.append(col)
+                
+            # Priority 1: Look for "# Logged-in Users" specifically
+            if ('logged' in col_lower and 'in' in col_lower and 'user' in col_lower) or \
+               ('logged-in' in col_lower and 'user' in col_lower) or \
+               ('loggedin' in col_lower and 'user' in col_lower):
+                logged_in_users_col = col
+                break
+                
+            # Priority 2: Look for variations with # symbol
+            if '#' in col and 'logged' in col_lower and 'user' in col_lower:
+                logged_in_users_col = col
+                break
+        
+        # If still not found, look for any column with "logged" and "user"
+        if not logged_in_users_col:
+            for col in display_df.columns:
+                col_lower = col.lower().strip()
+                if 'logged' in col_lower and 'user' in col_lower:
+                    logged_in_users_col = col
+                    break
+        
+        # Add calculated percentage columns after each error count column
+        error_columns = ['0 errors', '1 errors', '2 errors', '3-5 errors', '6-10 errors', '>10 errors']
+        
+        # Also try to find actual error columns in the dataset
+        actual_error_columns = []
+        for col in display_df.columns:
+            col_lower = col.lower().strip()
+            # Look for columns that contain numbers and "error"
+            if 'error' in col_lower:
+                for error_pattern in ['0 error', '1 error', '2 error', '3-5 error', '6-10 error', '>10 error', '10+ error']:
+                    if error_pattern in col_lower:
+                        actual_error_columns.append(col)
+                        break
+        
+        # Use actual found columns if available, otherwise try the expected ones
+        columns_to_process = actual_error_columns if actual_error_columns else error_columns
+        
+        if logged_in_users_col:
+            # Work backwards through columns to maintain correct positioning when inserting
+            cols = list(display_df.columns)
+            
+            # Use actual found columns, work backwards to maintain positions
+            for error_col in reversed(columns_to_process):
+                # For expected columns, find the actual column name
+                actual_error_col = None
+                if error_col in error_columns:  # This is an expected column name
+                    # Find the actual column (case-insensitive, flexible matching)
+                    for col in cols:
+                        col_lower = col.lower().strip()
+                        error_col_lower = error_col.lower()
+                        if col_lower == error_col_lower or \
+                           (error_col_lower.replace(' ', '').replace('-', '') in col_lower.replace(' ', '').replace('-', '')):
+                            actual_error_col = col
+                            break
+                else:  # This is already an actual column name
+                    actual_error_col = error_col
+                
+                if actual_error_col and actual_error_col in cols:
+                    # Find the position to insert percentage column
+                    error_col_idx = cols.index(actual_error_col)
+                    
+                    # Calculate percentage for this error column
+                    error_pct = []
+                    
+                    for idx, row in display_df.iterrows():
+                        try:
+                            error_count = pd.to_numeric(row[actual_error_col], errors='coerce')
+                            logged_users = pd.to_numeric(row[logged_in_users_col], errors='coerce')
+                            
+                            if pd.notna(error_count) and pd.notna(logged_users) and logged_users > 0:
+                                percentage = (error_count / logged_users) * 100
+                                error_pct.append(f"{percentage:.2f}%")
+                            else:
+                                error_pct.append("N/A")
+                        except Exception as e:
+                            error_pct.append("N/A")
+                    
+                    # Create percentage column name
+                    pct_col_name = f"{actual_error_col} %"
+                    
+
+                    # Insert the new column after the error column
+                    display_df.insert(error_col_idx + 1, pct_col_name, error_pct)
+                    
+
+                    
+                    # Update the cols list to reflect the new column
+                    cols = list(display_df.columns)
+        
+        # Identify our calculated columns to protect them from formatting
+        calculated_pct_cols = [col for col in display_df.columns if col.endswith(' %') and any(error in col for error in ['0 errors', '1 errors', '2 errors', '3-5 errors', '6-10 errors', '>10 errors'])]
+        
+        # Format existing percentage columns with proper XX.XX% format for User Impact
+        # Only format original percentage columns, NOT our calculated ones
+        for col in display_df.columns:
+            # Skip ALL calculated percentage columns - they're already properly formatted
+            if col in calculated_pct_cols:
+                continue
+                
+            # Only format original percentage columns that contain decimal values (like 0.925)
+            if '%' in col:
+                try:
+                    # Check if values are already formatted as strings with % (skip if so)
+                    sample_val = display_df[col].iloc[0] if len(display_df) > 0 else None
+                    if isinstance(sample_val, str) and sample_val.endswith('%'):
+                        continue
+                    
+                    # Convert decimal values to percentage format
+                    numeric_series = pd.to_numeric(display_df[col], errors='coerce')
+                    
+                    def format_user_impact_percentage(x):
+                        if pd.isna(x):
+                            return ""
+                        return f"{x * 100:.2f}%"
+                    
+                    display_df[col] = numeric_series.apply(format_user_impact_percentage)
+                except (ValueError, TypeError):
+                    continue
+
+
+        
+        # Display basic statistics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Rows", len(display_df))
+        with col2:
+            numeric_cols = len(display_df.select_dtypes(include=['number']).columns)
+            st.metric("Numeric Columns", numeric_cols)
+        with col3:
+            completeness = ((len(display_df) - display_df.isnull().sum().sum()) / (len(display_df) * len(display_df.columns)) * 100) if len(display_df) > 0 else 0
+            st.metric("Data Completeness", f"{completeness:.1f}%")
+        
+
+        
+        # Use dynamic height based on number of rows
+        display_height = min(600, max(200, len(display_df) * 35 + 100))
+        
+
+
+        # Display the main table
+        st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
+        
+
+    
+    def render_error_counts_table(self, df: pd.DataFrame, title: str) -> None:
+        """Render Error Counts table with calculated percentage columns."""
+        import pandas as pd
+        
+        # Sort by date columns (latest to oldest)
+        df = sort_dataframe_by_date(df, ascending=False)
+        
+        # Apply date formatting to the dataframe
+        df = format_dataframe_dates(df)
+        
+        # Display table title
+        st.subheader(title)
+        
+        # Create a copy of the dataframe for display
+        display_df = df.copy()
+        
+        # Find the required columns for calculations
+        session_timeout_col = None
+        total_count_col = None
+        errors_analysis_col = None
+        
+        # Look for Session Timeout Errors column
+        for col in display_df.columns:
+            col_lower = col.lower().strip()
+            if ('session' in col_lower and 'timeout' in col_lower and 'error' in col_lower):
+                session_timeout_col = col
+                break
+        
+        # Look for Total Count column
+        for col in display_df.columns:
+            col_lower = col.lower().strip()
+            if col_lower == "total count":
+                total_count_col = col
+                break
+        
+        # Look for Errors Requiring Analysis column
+        for col in display_df.columns:
+            col_lower = col.lower().strip()
+            if ('error' in col_lower and 'requiring' in col_lower and 'analysis' in col_lower):
+                errors_analysis_col = col
+                break
+        
+        # Add calculated percentage columns if the required columns are found
+        if session_timeout_col and total_count_col:
+            # Find the position to insert "Timeout Errors %" after Session Timeout Errors
+            cols = list(display_df.columns)
+            timeout_col_idx = cols.index(session_timeout_col)
+            
+            # Calculate Timeout Errors %
+            timeout_pct = []
+            for _, row in display_df.iterrows():
+                try:
+                    session_timeout = pd.to_numeric(row[session_timeout_col], errors='coerce')
+                    total_count = pd.to_numeric(row[total_count_col], errors='coerce')
+                    
+                    if pd.notna(session_timeout) and pd.notna(total_count) and total_count > 0:
+                        percentage = (session_timeout / total_count) * 100
+                        timeout_pct.append(f"{percentage:.2f}%")
+                    else:
+                        timeout_pct.append("N/A")
+                except:
+                    timeout_pct.append("N/A")
+            
+            # Insert the new column after Session Timeout Errors
+            display_df.insert(timeout_col_idx + 1, "Timeout Errors %", timeout_pct)
+        
+        if errors_analysis_col and total_count_col:
+            # Find the position to insert "Analysis Errors %" after Errors Requiring Analysis
+            cols = list(display_df.columns)
+            analysis_col_idx = cols.index(errors_analysis_col)
+            
+            # Calculate Analysis Errors %
+            analysis_pct = []
+            for _, row in display_df.iterrows():
+                try:
+                    errors_analysis = pd.to_numeric(row[errors_analysis_col], errors='coerce')
+                    total_count = pd.to_numeric(row[total_count_col], errors='coerce')
+                    
+                    if pd.notna(errors_analysis) and pd.notna(total_count) and total_count > 0:
+                        percentage = (errors_analysis / total_count) * 100
+                        analysis_pct.append(f"{percentage:.2f}%")
+                    else:
+                        analysis_pct.append("N/A")
+                except:
+                    analysis_pct.append("N/A")
+            
+            # Insert the new column after Errors Requiring Analysis
+            display_df.insert(analysis_col_idx + 1, "Analysis Errors %", analysis_pct)
+        
+        # Format currency columns (if any)
+        for col in display_df.columns:
+            col_lower = col.lower()
+            if 'amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower):
+                try:
+                    display_df[col] = pd.to_numeric(display_df[col], errors='coerce')
+                    display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "")
+                except (ValueError, TypeError):
+                    display_df[col] = display_df[col].apply(
+                        lambda x: f"${float(x):,.2f}" if pd.notna(x) and str(x).replace('.','').replace('-','').isdigit() else str(x)
+                    )
+        
+        # Apply percentage formatting to existing percentage columns (but not our calculated ones)
+        display_df = format_percentage_columns(display_df)
+        
+        # Display basic statistics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Rows", len(display_df))
+        with col2:
+            numeric_cols = len(display_df.select_dtypes(include=['number']).columns)
+            st.metric("Numeric Columns", numeric_cols)
+        with col3:
+            completeness = ((len(display_df) - display_df.isnull().sum().sum()) / (len(display_df) * len(display_df.columns)) * 100) if len(display_df) > 0 else 0
+            st.metric("Data Completeness", f"{completeness:.1f}%")
+        
+        # Use dynamic height based on number of rows
+        display_height = min(600, max(200, len(display_df) * 35 + 100))
+        st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
+        
+        # Add info note about calculated columns
+        calculated_columns = []
+        if session_timeout_col and total_count_col:
+            calculated_columns.append("'Timeout Errors %' = (Session Timeout Errors / Total Count) × 100")
+        if errors_analysis_col and total_count_col:
+            calculated_columns.append("'Analysis Errors %' = (Errors Requiring Analysis / Total Count) × 100")
+        
+        if calculated_columns:
+            st.info(f"📊 **Calculated Columns Added:**\n" + "\n".join([f"• {calc}" for calc in calculated_columns]))
         
 # Old implementation removed - now using generic template
     
