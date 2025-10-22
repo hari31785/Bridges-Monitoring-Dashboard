@@ -962,58 +962,100 @@ class MonitoringDashboard:
             scroll-behavior: auto !important;
         }
         
-        /* Main navigation buttons with professional styling */
+        /* Enhanced navigation styling with better color visibility */
         .stButton > button {
             text-align: left !important;
-            padding: 10px 16px !important;
-            font-weight: 500 !important;
             border-radius: 8px !important;
             transition: all 0.3s ease !important;
-            margin: 3px 0 !important;
-            border: 1px solid #e9ecef !important;
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
             font-family: 'Inter', sans-serif !important;
         }
         
-        /* Enhanced hover effects */
-        .stButton > button:hover {
-            background: linear-gradient(135deg, var(--light-blue) 0%, #cce7ff 100%) !important;
-            border-color: var(--accent-blue) !important;
-            color: var(--primary-blue) !important;
-            transform: translateY(-1px) !important;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
+        /* Make sidebar buttons more visible with container colors */
+        div[data-testid="stSidebar"] .stButton > button {
+            background: rgba(255,255,255,0.7) !important;
+            border: 1px solid rgba(0,0,0,0.15) !important;
+            color: #333 !important;
+            font-weight: 600 !important;
+            padding: 10px 14px !important;
+            border-radius: 6px !important;
+            margin: 2px 0 !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
         }
+        
+        /* Enhanced hover effects */
+        div[data-testid="stSidebar"] .stButton > button:hover {
+            background: rgba(255,255,255,1) !important;
+            border-color: rgba(0,0,0,0.2) !important;
+            transform: translateX(2px) !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
+        }
+        
+        /* Custom navigation button styling */
+        .nav-button {
+            width: 100%;
+            text-align: left;
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            padding: 6px 12px;
+            margin: 0px !important;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            display: block;
+        }
+        
+        .nav-button:hover {
+            opacity: 0.8;
+        }
+        
+        .sub-nav-button {
+            width: 100%;
+            text-align: left;
+            border: none;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-weight: 400;
+            padding: 4px 10px;
+            margin: 0px !important;
+            border-radius: 3px;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            display: block;
+        }
+        
+
         
         /* Professional sidebar styling */
         .css-1d391kg {
             background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%) !important;
-            border-right: 3px solid var(--primary-blue) !important;
+            border-right: 3px solid #1f4e79 !important;
         }
         
-        /* Sub-menu containers with professional styling */
-        .sub-menu-container .stButton > button {
-            font-size: 12px !important;
-            color: var(--neutral-gray) !important;
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
-            border: 1px solid #dee2e6 !important;
-            margin: 2px 0 !important;
-            padding: 8px 12px !important;
-            min-height: 32px !important;
-            line-height: 1.4 !important;
-            margin-left: 12px !important;
-            font-weight: 450 !important;
-            border-radius: 6px !important;
-            font-family: 'Inter', sans-serif !important;
-            transition: all 0.2s ease !important;
+        /* File Upload Button */
+        .file-menu-container .stButton > button {
+            background-color: #6c757d !important;
+            color: white !important;
+            border: none !important;
+            padding: 10px 16px !important;
+            font-weight: 500 !important;
+            font-size: 13px !important;
+            border-radius: 8px !important;
+            margin-bottom: 8px !important;
         }
         
-        /* Enhanced sub-menu hover effects */
-        .sub-menu-container .stButton > button:hover {
-            background: linear-gradient(135deg, var(--light-blue) 0%, #d1ecf1 100%) !important;
-            border-color: var(--accent-blue) !important;
-            color: var(--primary-blue) !important;
-            transform: translateX(2px) !important;
+        .file-menu-container .stButton > button:hover {
+            background-color: #5a6268 !important;
+            color: white !important;
+        }
+        
+        /* Active state styling will be handled via inline backgrounds */
+        
+        /* Tree symbols styling */
+        .tree-symbol {
+            color: #888 !important;
+            font-family: monospace !important;
+            margin-right: 8px !important;
             box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
         }
         
@@ -1176,6 +1218,8 @@ class MonitoringDashboard:
             border-left-color: var(--danger-red) !important;
         }
         </style>
+        
+
         """
         st.sidebar.markdown(tree_css, unsafe_allow_html=True)
         
@@ -1193,15 +1237,15 @@ class MonitoringDashboard:
         
         st.sidebar.subheader("🏠 Navigation Tree")
         
-        # Define all main sections with their details - Reordered per user request
+        # Define all main sections with their details and unique colors - Reordered per user request
         main_sections = [
-            {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False},
-            {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True},
-            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
-            {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True},
-            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True},
-            {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True},
-            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Miscellaneous Bridges Processes", "has_subsections": True}
+            {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False, "color": "#17a2b8", "active_color": "#138496"},
+            {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True, "color": "#4caf50", "active_color": "#388e3c"},
+            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True, "color": "#f44336", "active_color": "#d32f2f"},
+            {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2"},
+            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True, "color": "#ff9800", "active_color": "#f57c00"},
+            {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True, "color": "#9c27b0", "active_color": "#7b1fa2"},
+            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Miscellaneous Bridges Processes", "has_subsections": True, "color": "#008b8b", "active_color": "#006064"}
         ]
         
         # Render each main section with expandable functionality
@@ -1209,6 +1253,8 @@ class MonitoringDashboard:
             section_key = section["key"]
             section_icon = section["icon"]
             section_name = section["name"]
+            section_color = section["color"]
+            active_color = section["active_color"]
             has_subsections = section["has_subsections"]
             
             # Create expand/collapse button if section has subsections
@@ -1216,41 +1262,64 @@ class MonitoringDashboard:
                 is_expanded = section_key in st.session_state.expanded_sections
                 expand_symbol = "🔽" if is_expanded else "▶️"
                 
-                # Create tree-like structure with proper alignment
-                button_text = f"{expand_symbol} {section_icon} {section_name}"
+                # Create main navigation with color-coded background
+                button_text = f"**{expand_symbol} {section_icon} {section_name}**"
+                
+                # Use colored background based on section color with distinct active/inactive colors
+                is_active = section_key == st.session_state.get('selected_section')
+                if is_active:
+                    bg_color = f"{active_color}CC"  # Very strong active color (80% opacity)
+                    border_color = active_color
+                else:
+                    bg_color = f"{section_color}99"  # Strong inactive color (60% opacity)
+                    border_color = section_color
+                
+                st.sidebar.markdown(f"""
+                <div style="margin: 0px 0px 0px 0px !important; padding: 1px 2px 1px 2px !important; background-color: {bg_color}; border-radius: 4px; border-left: 3px solid {border_color}; margin-bottom: 0px !important; margin-top: 0px !important;">
+                """, unsafe_allow_html=True)
+                
                 if st.sidebar.button(button_text, 
                                    key=f"expand_{section_key}_{i}", 
-                                   help="Select section and show subsections",
-                                   use_container_width=True):
-                    # Always select the section first
+                                   help="Click to expand/collapse subsections",
+                                   use_container_width=True, 
+                                   type="secondary"):
+                    # Toggle functionality for expand/collapse
                     prev_section = st.session_state.get('selected_section', None)
-                    if prev_section != section_key:
-                        # Clear all section-related state when switching sections
-                        for key in list(st.session_state.keys()):
-                            if key.startswith(('selected_', 'current_', 'clicked_', 'data_', 'df_')):
-                                del st.session_state[key]
                     
-                    # Set the selected section
-                    st.session_state.selected_section = section_key
-                    st.session_state.selected_subsection = None  # Clear subsection to show section home page
-                    
-                    # Always expand the clicked section and collapse others
-                    # This ensures subsections are always visible when you click a main section
-                    # and keeps the navigation clean by showing only one expanded section at a time
-                    if prev_section != section_key:
-                        # Switching to a different section - collapse all others and expand this one
+                    if section_key in st.session_state.expanded_sections:
+                        # Section is expanded - collapse it
+                        st.session_state.expanded_sections.remove(section_key)
+                        # If this was the selected section, keep it selected but hide subsections
+                        if prev_section == section_key:
+                            st.session_state.selected_section = section_key
+                            st.session_state.selected_subsection = None
+                    else:
+                        # Section is collapsed - expand it and select it
+                        if prev_section != section_key:
+                            # Clear all section-related state when switching sections
+                            for key in list(st.session_state.keys()):
+                                if key.startswith(('selected_', 'current_', 'clicked_', 'data_', 'df_')):
+                                    del st.session_state[key]
+                        
+                        # Collapse all other sections and expand this one
                         st.session_state.expanded_sections.clear()
                         st.session_state.expanded_sections.add(section_key)
-                    else:
-                        # Clicking on the same section - always ensure it's expanded
-                        st.session_state.expanded_sections.add(section_key)
+                        st.session_state.selected_section = section_key
+                        st.session_state.selected_subsection = None
                     
                     st.rerun()
                 
+                st.sidebar.markdown('</div>', unsafe_allow_html=True)  # Close margin div
+                
+                # Add colored separator line matching section color
+                st.sidebar.markdown(f"""
+                <div style="margin: 6px 0px; height: 2px; background: linear-gradient(90deg, {section_color}AA, {section_color}44, transparent); border-radius: 1px;"></div>
+                """, unsafe_allow_html=True)
+                
                 # Show subsections if expanded
                 if section_key in st.session_state.expanded_sections:
-                    # Add indentation for subsections
-                    st.sidebar.markdown('<div style="margin-left: 20px;">', unsafe_allow_html=True)
+                    # Add minimal indentation for subsections
+                    st.sidebar.markdown('<div style="margin-left: 5px; margin-top: 0px;">', unsafe_allow_html=True)
                     
                     if section_key == "benefit_issuance":
                         # Initialize expanded periods in session state
@@ -1299,10 +1368,11 @@ class MonitoringDashboard:
                                     }
                                     
                                     # Indented file buttons with smaller styling
-                                    st.sidebar.markdown('<div style="margin-left: 20px;" class="file-menu-container">', unsafe_allow_html=True)
+                                    st.sidebar.markdown('<div style="margin-left: 12px; margin-top: 0px;" class="file-menu-container">', unsafe_allow_html=True)
                                     
-                                    for file_name in available_files:
+                                    for i, file_name in enumerate(available_files):
                                         icon = file_icons.get(file_name, "📄")
+                                        tree_symbol = "└─" if i == len(available_files) - 1 else "├─"
                                         
                                         # Check if this is the currently selected dashboard
                                         is_active = (st.session_state.get('selected_section') == section_key and 
@@ -1313,11 +1383,12 @@ class MonitoringDashboard:
                                         if is_active:
                                             st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
                                         
-                                        # Clear, clickable button for files
-                                        if st.sidebar.button(f"    📄 {icon} {file_name}", 
+                                        # Hierarchical clickable button for files
+                                        if st.sidebar.button(f"　　{tree_symbol} {icon} {file_name}", 
                                                            key=f"file_{period_key}_{file_name}",
                                                            help=f"Click to analyze {file_name}",
-                                                           use_container_width=True):
+                                                           use_container_width=True,
+                                                           type="secondary"):
                                             # Clear all data state when selecting a new subsection
                                             for key in list(st.session_state.keys()):
                                                 if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
@@ -1349,14 +1420,16 @@ class MonitoringDashboard:
                                 "View History Screen Validation": "📋"
                             }
                             
-                            # Clear, clickable buttons for files
-                            for file_name in available_files:
+                            # Hierarchical file buttons with tree symbols
+                            for i, file_name in enumerate(available_files):
                                 icon = file_icons.get(file_name, "📄")
+                                tree_symbol = "└─" if i == len(available_files) - 1 else "├─"
                                 
-                                if st.sidebar.button(f"  📄 {icon} {file_name}", 
+                                if st.sidebar.button(f"　{tree_symbol} {icon} {file_name}", 
                                                    key=f"file_correspondence_{file_name}",
                                                    help=f"Click to analyze {file_name}",
-                                                   use_container_width=True):
+                                                   use_container_width=True,
+                                                   type="secondary"):
                                     # Clear all data state when selecting a new subsection
                                     for key in list(st.session_state.keys()):
                                         if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
@@ -1380,15 +1453,17 @@ class MonitoringDashboard:
                                 "Daily 100 Error Counts": "🚨"
                             }
                             
-                            # Clear, clickable buttons for files
-                            for file_name in available_files:
+                            # Hierarchical file buttons with tree symbols
+                            for i, file_name in enumerate(available_files):
                                 icon = file_icons.get(file_name, "📄")
+                                tree_symbol = "└─" if i == len(available_files) - 1 else "├─"
                                 
-                                # Clear, clickable button for files
-                                if st.sidebar.button(f"  📄 {icon} {file_name}", 
+                                # Hierarchical clickable button for files
+                                if st.sidebar.button(f"　{tree_symbol} {icon} {file_name}", 
                                                    key=f"file_error_counts_{file_name}",
                                                    help=f"Click to analyze {file_name}",
-                                                   use_container_width=True):
+                                                   use_container_width=True,
+                                                   type="secondary"):
                                     st.session_state.selected_section = section_key
                                     st.session_state.selected_subsection = file_name
                                     st.rerun()
@@ -1409,14 +1484,16 @@ class MonitoringDashboard:
                                 "Daily User Impact Status": "👥"
                             }
                             
-                            # Clear, clickable buttons for files
-                            for file_name in available_files:
+                            # Hierarchical file buttons with tree symbols
+                            for i, file_name in enumerate(available_files):
                                 icon = file_icons.get(file_name, "📄")
+                                tree_symbol = "└─" if i == len(available_files) - 1 else "├─"
                                 
-                                if st.sidebar.button(f"  📄 {icon} {file_name}", 
+                                if st.sidebar.button(f"　{tree_symbol} {icon} {file_name}", 
                                                    key=f"file_user_impact_{file_name}",
                                                    help=f"Click to analyze {file_name}",
-                                                   use_container_width=True):
+                                                   use_container_width=True,
+                                                   type="secondary"):
                                     st.session_state.selected_section = section_key
                                     st.session_state.selected_subsection = file_name
                                     st.rerun()
@@ -1440,11 +1517,14 @@ class MonitoringDashboard:
                             {"key": "consolidated_inquiry", "icon": "🔍", "name": "Consolidated Inquiry"}
                         ]
                         
-                        # Clear, clickable buttons for miscellaneous subsections
-                        for misc_section in misc_sections:
+                        # Hierarchical subsection buttons with tree symbols
+                        for i, misc_section in enumerate(misc_sections):
                             misc_key = misc_section["key"]
                             misc_icon = misc_section["icon"]
                             misc_name = misc_section["name"]
+                            
+                            # Use tree symbols for hierarchy (last item gets └─, others get ├─)
+                            tree_symbol = "└─" if i == len(misc_sections) - 1 else "├─"
                             
                             # Check if this is the currently selected dashboard
                             is_active = (st.session_state.get('selected_section') == misc_key)
@@ -1453,10 +1533,11 @@ class MonitoringDashboard:
                             if is_active:
                                 st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
                             
-                            if st.sidebar.button(f"  📄 {misc_icon} {misc_name}", 
+                            if st.sidebar.button(f"　{tree_symbol} {misc_icon} {misc_name}", 
                                                key=f"misc_{misc_key}",
                                                help=f"Click to analyze {misc_name}",
-                                               use_container_width=True):
+                                               use_container_width=True,
+                                               type="secondary"):
                                 # Clear all data state when selecting a new subsection
                                 for key in list(st.session_state.keys()):
                                     if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
@@ -1483,11 +1564,14 @@ class MonitoringDashboard:
                             {"key": "batch_exceptions_uat", "icon": "🔬", "name": "Batch Exceptions - UAT"}
                         ]
                         
-                        # Clear, clickable buttons for exception subsections
-                        for exception_section in exception_sections:
+                        # Hierarchical subsection buttons with tree symbols
+                        for i, exception_section in enumerate(exception_sections):
                             exception_key = exception_section["key"]
                             exception_icon = exception_section["icon"]
                             exception_name = exception_section["name"]
+                            
+                            # Use tree symbols for hierarchy (last item gets └─, others get ├─)
+                            tree_symbol = "└─" if i == len(exception_sections) - 1 else "├─"
                             
                             # Check if this is the currently selected dashboard
                             is_active = (st.session_state.get('selected_section') == exception_key)
@@ -1496,10 +1580,11 @@ class MonitoringDashboard:
                             if is_active:
                                 st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
                             
-                            if st.sidebar.button(f"  📄 {exception_icon} {exception_name}", 
+                            if st.sidebar.button(f"　{tree_symbol} {exception_icon} {exception_name}", 
                                                key=f"exception_{exception_key}",
                                                help=f"Click to analyze {exception_name}",
-                                               use_container_width=True):
+                                               use_container_width=True,
+                                               type="secondary"):
                                 # Clear all data state when selecting a new subsection
                                 for key in list(st.session_state.keys()):
                                     if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
@@ -1516,19 +1601,35 @@ class MonitoringDashboard:
                     
                     st.sidebar.markdown('</div>', unsafe_allow_html=True)
             else:
-                # Section without subsections - just a clickable button
-                # Check if this is the currently selected section
+                # Section without subsections - just a clickable button with color coding
                 is_active = st.session_state.get('selected_section') == section_key
                 
-                # Section without subsections - just a clickable button
-                if st.sidebar.button(f"{section_icon} {section_name}", key=f"section_{section_key}_{i}", 
-                                   help=f"Select {section_name}", use_container_width=True):
+                # Use colored background based on section color with distinct active/inactive colors
+                if is_active:
+                    bg_color = f"{active_color}CC"  # Very strong active color (80% opacity)
+                    border_color = active_color
+                else:
+                    bg_color = f"{section_color}99"  # Strong inactive color (60% opacity)
+                    border_color = section_color
+                    
+                button_text = f"**{section_icon} {section_name}**"
+                
+                st.sidebar.markdown(f"""
+                <div style="margin: 0px 0px 0px 0px !important; padding: 1px 2px 1px 2px !important; background-color: {bg_color}; border-radius: 4px; border-left: 3px solid {border_color}; margin-bottom: 0px !important; margin-top: 0px !important;">
+                """, unsafe_allow_html=True)
+                
+                if st.sidebar.button(button_text, key=f"section_{section_key}_{i}", 
+                                   help=f"Select {section_name}", use_container_width=True, type="secondary"):
                     st.session_state.selected_section = section_key
                     st.session_state.selected_subsection = None
                     st.rerun()
-            
-            # Add small visual separator  
-            st.sidebar.markdown("")
+                
+                st.sidebar.markdown('</div>', unsafe_allow_html=True)  # Close color div
+                
+                # Add colored separator line matching section color
+                st.sidebar.markdown(f"""
+                <div style="margin: 6px 0px; height: 2px; background: linear-gradient(90deg, {section_color}AA, {section_color}44, transparent); border-radius: 1px;"></div>
+                """, unsafe_allow_html=True)
         
         # If Benefit Issuance is selected, show its sub-files indented
         if current_section_key == "benefit_issuance":
@@ -4913,3 +5014,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
