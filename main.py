@@ -767,6 +767,12 @@ class MonitoringDashboard:
                 # Convert date string to sheet name format
                 sheet_name = self._convert_date_to_sheet_name(date_str)
                 
+                # First check if the specific sheet exists
+                available_sheets = self._get_available_upload_status_sheets()
+                if sheet_name not in available_sheets:
+                    logger.info(f"Sheet '{sheet_name}' not found. Available sheets: {available_sheets}")
+                    return pd.DataFrame()  # Return empty DataFrame when sheet doesn't exist
+                
                 # Try to load from the specific sheet
                 try:
                     df = loader.load_data(sheet_name=sheet_name)
@@ -776,12 +782,8 @@ class MonitoringDashboard:
                     return df
                 except Exception as sheet_error:
                     logger.warning(f"Could not load from sheet '{sheet_name}': {sheet_error}")
-                    # Fallback to first sheet
-                    df = loader.load_data()
-                    # Apply date filtering to show only recent weeks
-                    df = filter_data_to_recent_weeks(df)
-                    logger.info("Loaded upload status data from default sheet")
-                    return df
+                    # Return empty DataFrame instead of fallback
+                    return pd.DataFrame()
                     
             except Exception as e:
                 logger.error(f"Error loading upload status data: {e}")
@@ -2529,11 +2531,12 @@ class MonitoringDashboard:
             if df.empty:
                 return ("warning", "#ffc107", "No data available")
             
-            # Get the most recent weekday data
-            recent_data = self.get_most_recent_weekday_data(df)
+            # Get data for the specific target date (sysdate-1 business day)
+            target_date = self.get_target_business_date()
+            recent_data = self.get_data_for_specific_date(df, target_date)
             
             if recent_data is None:
-                return ("warning", "#ffc107", "No recent weekday data found")
+                return ("warning", "#ffc107", "Data not available")
             
             # Get total error count for the most recent weekday
             total_count = self.calculate_total_error_count(recent_data)
@@ -2569,11 +2572,12 @@ class MonitoringDashboard:
             # Process the data to add calculated percentage columns (same as render_user_impact_table)
             processed_df = self.add_user_impact_percentage_columns(df.copy())
             
-            # Get the most recent weekday data from the processed dataframe
-            recent_data = self.get_most_recent_weekday_data(processed_df)
+            # Get data for the specific target date (sysdate-1 business day)
+            target_date = self.get_target_business_date()
+            recent_data = self.get_data_for_specific_date(processed_df, target_date)
             
             if recent_data is None:
-                return ("warning", "#ffc107", "No recent weekday data found")
+                return ("warning", "#ffc107", "Data not available")
             
             # Get the 0 Errors % value from the processed data
             zero_errors_pct = self.get_zero_errors_percentage(recent_data)
@@ -2593,25 +2597,53 @@ class MonitoringDashboard:
             return ("warning", "#ffc107", f"Error loading data: {str(e)}")
     
     def get_correspondence_status(self):
-        """Get status for Correspondence section based on available data."""
+        """Get status for Correspondence section based on Tango Monitoring data."""
         try:
-            # Check for correspondence data files
-            correspondence_path = Path(__file__).parent / "Monitoring Data Files" / "Correspondence"
+            # Load the Tango Monitoring data
+            tango_path = Path(__file__).parent / "Monitoring Data Files" / "Correspondence" / "Tango Monitoring.xlsx"
             
-            if not correspondence_path.exists():
-                return ("warning", "#ffc107", "Data directory not found")
+            if not tango_path.exists():
+                return ("warning", "#ffc107", "Tango Monitoring data not found")
             
-            # Count available data files
-            files = list(correspondence_path.glob("*.xlsx"))
-            if len(files) == 0:
-                return ("warning", "#ffc107", "No data files found")
-            elif len(files) >= 2:
-                return ("normal", "#28a745", f"Monitoring {len(files)} data sources")
+            # Load and process the Tango Monitoring data
+            from src.data_loader import ExcelDataLoader
+            loader = ExcelDataLoader(str(tango_path))
+            df = loader.load_data()
+            
+            if df.empty:
+                return ("warning", "#ffc107", "No Tango data available")
+            
+            # Get data for the specific target date (sysdate-1 business day)
+            target_date = self.get_target_business_date()
+            recent_data = self.get_data_for_specific_date(df, target_date)
+            
+            if recent_data is None:
+                return ("warning", "#ffc107", "Data not available")
+            
+            # Find the "Number of Files not sent to CPC" column
+            files_not_sent_col = None
+            for col in df.columns:
+                if "Number of Files not sent to CPC" in str(col) or "files not sent" in str(col).lower():
+                    files_not_sent_col = col
+                    break
+            
+            if files_not_sent_col is None:
+                return ("warning", "#ffc107", "Files not sent column not found")
+            
+            # Get the value for the most recent date
+            try:
+                files_not_sent_value = float(recent_data[files_not_sent_col]) if pd.notna(recent_data[files_not_sent_col]) else 0
+            except (ValueError, TypeError):
+                return ("warning", "#ffc107", "Invalid files not sent data")
+            
+            # Apply red/green threshold (≥7 is red, <7 is green)
+            if files_not_sent_value >= 7:
+                return ("critical", "#dc3545", f"{int(files_not_sent_value)} Files not sent to CPC")
             else:
-                return ("warning", "#ffc107", f"Limited data sources: {len(files)}")
+                return ("normal", "#28a745", f"{int(files_not_sent_value)} Files not sent to CPC")
                 
         except Exception as e:
-            return ("warning", "#ffc107", f"Error checking data: {str(e)}")
+            return ("warning", "#ffc107", f"Error loading Tango data: {str(e)}")
     
     def get_benefit_issuance_status(self):
         """Get status for Benefit Issuance section."""
@@ -2620,7 +2652,7 @@ class MonitoringDashboard:
             bi_path = Path(__file__).parent / "Monitoring Data Files" / "BI Monitoring"
             
             if not bi_path.exists():
-                return ("warning", "#ffc107", "Data directory not found")
+                return ("warning", "#ffc107", "Data not available")
             
             # Check for different time period folders
             folders = ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
@@ -2629,9 +2661,9 @@ class MonitoringDashboard:
             if len(available_folders) >= 4:
                 return ("normal", "#28a745", f"Monitoring {len(available_folders)} time periods")
             elif len(available_folders) >= 2:
-                return ("warning", "#ffc107", f"Monitoring {len(available_folders)} time periods")
+                return ("warning", "#ffc107", "Data not available")
             else:
-                return ("critical", "#dc3545", "Limited monitoring coverage")
+                return ("warning", "#ffc107", "Data not available")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error checking data: {str(e)}")
@@ -2640,21 +2672,11 @@ class MonitoringDashboard:
         """Get status for Daily Exceptions section."""
         try:
             # This would check for exception data across PRD and UAT environments
-            # For now, return a status based on general system health
-            import random
-            
-            # Simulate different exception levels
-            exception_count = random.randint(0, 50)
-            
-            if exception_count > 30:
-                return ("critical", "#dc3545", f"High exception count: {exception_count}")
-            elif exception_count > 15:
-                return ("warning", "#ffc107", f"Moderate exceptions: {exception_count}")
-            else:
-                return ("normal", "#28a745", f"Low exception count: {exception_count}")
+            # Since no real data source is configured yet, return data not available
+            return ("warning", "#ffc107", "Data not available")
                 
         except Exception as e:
-            return ("warning", "#ffc107", f"Error checking exceptions: {str(e)}")
+            return ("warning", "#ffc107", "Data not available")
     
     def get_miscellaneous_bridges_status(self):
         """Get status for Miscellaneous Bridges Processes section."""
@@ -2876,47 +2898,86 @@ class MonitoringDashboard:
         return df
     
     def get_most_recent_weekday_date(self):
-        """Get the date of the most recent weekday for display purposes."""
+        """Get the most recent business day (sysdate-1) for display purposes."""
+        from datetime import datetime, timedelta
+        
         try:
-            # Load the Daily 100 Error Counts Excel file
-            error_counts_path = Path(__file__).parent / "Monitoring Data Files" / "100 Error Counts" / "Daily 100 Error Counts.xlsx"
+            # Start with yesterday (sysdate - 1)
+            yesterday = datetime.now() - timedelta(days=1)
             
-            if not error_counts_path.exists():
-                return "Data not available"
+            # If yesterday was a weekday, use it; otherwise find the previous weekday
+            if yesterday.weekday() < 5:  # Monday=0, Friday=4
+                target_date = yesterday
+            else:
+                # Yesterday was weekend, find the previous Friday
+                # If yesterday was Saturday (5), go back 1 more day to Friday
+                # If yesterday was Sunday (6), go back 2 more days to Friday
+                days_back = yesterday.weekday() - 4  # 4 is Friday
+                target_date = yesterday - timedelta(days=days_back)
             
-            from src.data_loader import ExcelDataLoader
-            loader = ExcelDataLoader(str(error_counts_path))
-            df = loader.load_data()
+            return target_date.strftime("%B %d, %Y")
             
-            if df.empty:
-                return "No data available"
+        except Exception:
+            return "Date not available"
+    
+    def get_target_business_date(self):
+        """Get the target business date (sysdate-1) as a datetime object."""
+        from datetime import datetime, timedelta
+        
+        # Start with yesterday (sysdate - 1)
+        yesterday = datetime.now() - timedelta(days=1)
+        
+        # If yesterday was a weekday, use it; otherwise find the previous weekday
+        if yesterday.weekday() < 5:  # Monday=0, Friday=4
+            return yesterday
+        else:
+            # Yesterday was weekend, find the previous Friday
+            days_back = yesterday.weekday() - 4  # 4 is Friday
+            return yesterday - timedelta(days=days_back)
+    
+    def get_data_for_specific_date(self, df, target_date):
+        """Get data for a specific date from the dataframe."""
+        from datetime import datetime
+        
+        # Find date columns in the dataframe
+        date_columns = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in ['date', 'day']):
+                date_columns.append(col)
+        
+        if not date_columns:
+            # If no date column found, return the last row as fallback
+            return df.iloc[-1] if len(df) > 0 else None
+        
+        # Convert date column to datetime for comparison
+        date_col = date_columns[0]
+        try:
+            df_copy = df.copy()
+            df_copy[date_col] = pd.to_datetime(df_copy[date_col], errors='coerce')
+            df_copy = df_copy.dropna(subset=[date_col])
             
-            # Get the most recent weekday data
-            recent_data = self.get_most_recent_weekday_data(df)
+            if df_copy.empty:
+                return df.iloc[-1] if len(df) > 0 else None
             
-            if recent_data is None:
-                return "Date not available"
+            # Convert target_date to just the date part for comparison
+            if isinstance(target_date, str):
+                target_date = datetime.strptime(target_date, "%B %d, %Y")
+            target_date_only = target_date.date()
             
-            # Find date column and extract the date
-            date_columns = []
-            for col in df.columns:
-                col_lower = col.lower()
-                if any(keyword in col_lower for keyword in ['date', 'day']):
-                    date_columns.append(col)
+            # Find exact match for the target date
+            matching_rows = df_copy[df_copy[date_col].dt.date == target_date_only]
             
-            if date_columns:
-                date_col = date_columns[0]
-                try:
-                    date_value = pd.to_datetime(recent_data[date_col], errors='coerce')
-                    if pd.notna(date_value):
-                        return date_value.strftime("%B %d, %Y")
-                except:
-                    pass
-            
-            return "Date parsing error"
-            
-        except Exception as e:
-            return f"Error: {str(e)}"
+            if not matching_rows.empty:
+                # Return the first matching row for the target date
+                return matching_rows.iloc[0]
+            else:
+                # If no exact match for target date, return None to indicate data not available
+                return None
+                
+        except Exception:
+            # If date parsing fails, return the last row
+            return df.iloc[-1] if len(df) > 0 else None
     
     def render_status_card(self, title: str, icon: str, description: str, status: str, color: str, status_text: str):
         """Render a status card with the given parameters."""
@@ -3430,11 +3491,28 @@ class MonitoringDashboard:
                 st.markdown(f'<div class="tango-table-header">{col}</div>', unsafe_allow_html=True)
         
         # Display each row using columns with clickable date buttons
+        previous_date = None
+        
         for row_idx, row in df.iterrows():
-            # Add row styling
-            if row_idx % 2 == 0:
-                st.markdown('<div class="tango-table-row">', unsafe_allow_html=True)
+            current_date = format_date_to_standard(row[date_col]) if pd.notna(row[date_col]) else None
             
+            # Add grey separator line ONLY between different dates (not before first row)
+            if row_idx > 0 and previous_date and current_date and previous_date != current_date:
+                st.markdown('<div style="margin: 8px 0; border-bottom: 1px solid #ccc; opacity: 0.7;"></div>', unsafe_allow_html=True)
+            
+            # Check for "Number of Files not sent to CPC" column and value >= 7 for highlighting
+            highlight_row = False
+            for col in df.columns:
+                if "Number of Files not sent to CPC" in str(col) or "files not sent" in str(col).lower():
+                    try:
+                        files_not_sent_value = float(row[col]) if pd.notna(row[col]) else 0
+                        if files_not_sent_value >= 7:
+                            highlight_row = True
+                    except (ValueError, TypeError):
+                        pass
+                    break
+            
+            # Create columns for the row
             data_cols = st.columns(len(df.columns))
             
             for col_idx, col in enumerate(df.columns):
@@ -3444,49 +3522,79 @@ class MonitoringDashboard:
                     # Make date cells clickable if upload status is available
                     if col == date_col and cell_value and has_upload_status:
                         formatted_date = format_date_to_standard(cell_value)
-                        # Create clickable date hyperlink-style button
-                        if st.button(
-                            formatted_date, 
-                            key=f"date_link_{row_idx}_{col_idx}",
-                            help=f"Click to view upload status for {formatted_date}",
-                            type="secondary"
-                        ):
-                            st.session_state.clicked_tango_date = formatted_date
-                            st.rerun()
+                        
+                        # Apply red highlighting to date column if row is highlighted
+                        if highlight_row:
+                            # Create a red highlighted container for the clickable date
+                            st.markdown(f"""
+                            <div style="background-color: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 4px 8px; margin: 1px 0;">
+                                <span style="color: #d32f2f; font-weight: bold; font-size: 14px;">🔴 {formatted_date}</span>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Still provide clickable functionality with a subtle button
+                            if st.button(
+                                f"📋 View Status", 
+                                key=f"date_link_{row_idx}_{col_idx}",
+                                help=f"Click to view upload status for {formatted_date}",
+                                type="secondary"
+                            ):
+                                st.session_state.clicked_tango_date = formatted_date
+                                st.rerun()
+                        else:
+                            # Regular clickable date hyperlink-style button
+                            if st.button(
+                                formatted_date, 
+                                key=f"date_link_{row_idx}_{col_idx}",
+                                help=f"Click to view upload status for {formatted_date}",
+                                type="secondary"
+                            ):
+                                st.session_state.clicked_tango_date = formatted_date
+                                st.rerun()
                     else:
-                        # Regular cell content
-                        st.write(str(cell_value))
+                        # Apply bold red styling for highlighted rows
+                        if highlight_row:
+                            st.markdown(f'<div style="background-color: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 4px 8px; margin: 1px 0;"><span style="color: #d32f2f; font-weight: bold;">{str(cell_value)}</span></div>', unsafe_allow_html=True)
+                        else:
+                            # Regular cell content with alternating background
+                            if row_idx % 2 == 0:
+                                st.markdown(f'<div style="background-color: #f9f9f9; padding: 4px 8px; border-radius: 2px;">{str(cell_value)}</div>', unsafe_allow_html=True)
+                            else:
+                                st.write(str(cell_value))
             
-            if row_idx % 2 == 0:
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Add spacing between rows
-            st.markdown('<div style="margin: 5px 0;"></div>', unsafe_allow_html=True)
+            # Update previous_date for next iteration
+            previous_date = current_date
     
     def show_upload_status_for_date(self, selected_date: str, unused_param=None) -> None:
         """Display upload status for the selected date."""
         st.markdown("---")
         st.subheader(f"📄 File Upload Status for {selected_date}")
         
-        # Show available sheets for debugging
-        available_sheets = self._get_available_upload_status_sheets()
-        expected_sheet = self._convert_date_to_sheet_name(selected_date)
-        
-        with st.expander("🔍 Debug Info: Sheet Loading", expanded=False):
-            st.write(f"**Selected Date:** {selected_date}")
-            st.write(f"**Expected Sheet Name:** {expected_sheet}")
-            st.write(f"**Available Sheets:** {available_sheets}")
-            if expected_sheet in available_sheets:
-                st.success(f"✅ Sheet '{expected_sheet}' found!")
-            else:
-                st.warning(f"⚠️ Sheet '{expected_sheet}' not found. Will use closest match or first sheet.")
-        
         # Load upload status data for the specific date
         date_specific_df = self.load_tango_upload_status(selected_date)
         
         if date_specific_df.empty:
-            st.warning(f"Upload status data is not available for {selected_date}.")
-            st.info("💡 Try selecting a different date or check if the corresponding sheet exists in the Excel file.")
+            # Show a clean message when no data is available
+            st.info(f"📋 **Upload status is not available** for {selected_date}")
+            st.markdown("""
+            <div style="background-color: #f8f9fa; border-left: 4px solid #6c757d; padding: 15px; margin: 10px 0; border-radius: 4px;">
+                <h4 style="color: #495057; margin-top: 0;">ℹ️ No Data Available</h4>
+                <p style="color: #6c757d; margin-bottom: 0;">
+                    Upload status data has not been recorded for this date. This could mean:
+                    <br>• No file upload activity occurred on this date
+                    <br>• Data collection was not active on this date  
+                    <br>• The corresponding data sheet does not exist
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Optional: Show available dates for debugging (in expander)
+            available_sheets = self._get_available_upload_status_sheets()
+            if available_sheets:
+                with st.expander("🔍 View Available Dates", expanded=False):
+                    st.write("**Available upload status data for these dates:**")
+                    for sheet in sorted(available_sheets):
+                        st.write(f"• {sheet}")
             return
         
         # Sort and format upload status data
