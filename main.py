@@ -1196,22 +1196,16 @@ class MonitoringDashboard:
         # Define all main sections with their details - Reordered per user request
         main_sections = [
             {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False},
-            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
             {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True},
-            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True},
+            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True},
             {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True},
-            {"key": "mass_update", "icon": "🔄", "name": "Mass Update", "has_subsections": False},
-            {"key": "interfaces", "icon": "🔗", "name": "Interfaces", "has_subsections": False},
-            {"key": "extra_batch_connections", "icon": "⚡", "name": "Extra Batch Connections", "has_subsections": False},
-            {"key": "hung_threads", "icon": "🧵", "name": "Hung Threads", "has_subsections": False},
-            {"key": "online_exceptions_prd", "icon": "🌐", "name": "Online Exceptions - PRD", "has_subsections": False},
-            {"key": "batch_exceptions_prd", "icon": "💻", "name": "Batch Exceptions - PRD", "has_subsections": False},
-            {"key": "online_exceptions_uat", "icon": "🧪", "name": "Online Exceptions - UAT", "has_subsections": False},
-            {"key": "batch_exceptions_uat", "icon": "🔬", "name": "Batch Exceptions - UAT", "has_subsections": False}
+            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True},
+            {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True},
+            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Miscellaneous Bridges Processes", "has_subsections": True}
         ]
         
         # Render each main section with expandable functionality
-        for section in main_sections:
+        for i, section in enumerate(main_sections):
             section_key = section["key"]
             section_icon = section["icon"]
             section_name = section["name"]
@@ -1225,7 +1219,7 @@ class MonitoringDashboard:
                 # Create tree-like structure with proper alignment
                 button_text = f"{expand_symbol} {section_icon} {section_name}"
                 if st.sidebar.button(button_text, 
-                                   key=f"expand_{section_key}", 
+                                   key=f"expand_{section_key}_{i}", 
                                    help="Select section and show subsections",
                                    use_container_width=True):
                     # Always select the section first
@@ -1432,6 +1426,92 @@ class MonitoringDashboard:
                         
                         st.sidebar.markdown('</div>', unsafe_allow_html=True)
                     
+                    elif section_key == "miscellaneous_bridges":
+                        # Miscellaneous Bridges Processes subsections
+                        st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
+                        
+                        # Define the miscellaneous subsections
+                        misc_sections = [
+                            {"key": "mass_update", "icon": "🔄", "name": "Mass Update"},
+                            {"key": "interfaces", "icon": "🔗", "name": "Interfaces"},
+                            {"key": "extra_batch_connections", "icon": "⚡", "name": "Extra Batch Connections"},
+                            {"key": "hung_threads", "icon": "🧵", "name": "Hung Threads"}
+                        ]
+                        
+                        # Clear, clickable buttons for miscellaneous subsections
+                        for misc_section in misc_sections:
+                            misc_key = misc_section["key"]
+                            misc_icon = misc_section["icon"]
+                            misc_name = misc_section["name"]
+                            
+                            # Check if this is the currently selected dashboard
+                            is_active = (st.session_state.get('selected_section') == misc_key)
+                            
+                            # Add active styling if selected
+                            if is_active:
+                                st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
+                            
+                            if st.sidebar.button(f"  📄 {misc_icon} {misc_name}", 
+                                               key=f"misc_{misc_key}",
+                                               help=f"Click to analyze {misc_name}",
+                                               use_container_width=True):
+                                # Clear all data state when selecting a new subsection
+                                for key in list(st.session_state.keys()):
+                                    if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
+                                        del st.session_state[key]
+                                st.session_state.selected_section = misc_key
+                                st.session_state.selected_subsection = None
+                                st.rerun()
+                            
+                            # Close active div if it was opened
+                            if is_active:
+                                st.sidebar.markdown('</div>', unsafe_allow_html=True)
+                        
+                        st.sidebar.markdown('</div>', unsafe_allow_html=True)
+                    
+                    elif section_key == "daily_exceptions":
+                        # Daily Exceptions subsections
+                        st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
+                        
+                        # Define the exception subsections
+                        exception_sections = [
+                            {"key": "online_exceptions_prd", "icon": "🌐", "name": "Online Exceptions - PRD"},
+                            {"key": "batch_exceptions_prd", "icon": "💻", "name": "Batch Exceptions - PRD"},
+                            {"key": "online_exceptions_uat", "icon": "🧪", "name": "Online Exceptions - UAT"},
+                            {"key": "batch_exceptions_uat", "icon": "🔬", "name": "Batch Exceptions - UAT"}
+                        ]
+                        
+                        # Clear, clickable buttons for exception subsections
+                        for exception_section in exception_sections:
+                            exception_key = exception_section["key"]
+                            exception_icon = exception_section["icon"]
+                            exception_name = exception_section["name"]
+                            
+                            # Check if this is the currently selected dashboard
+                            is_active = (st.session_state.get('selected_section') == exception_key)
+                            
+                            # Add active styling if selected
+                            if is_active:
+                                st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
+                            
+                            if st.sidebar.button(f"  📄 {exception_icon} {exception_name}", 
+                                               key=f"exception_{exception_key}",
+                                               help=f"Click to analyze {exception_name}",
+                                               use_container_width=True):
+                                # Clear all data state when selecting a new subsection
+                                for key in list(st.session_state.keys()):
+                                    if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
+                                        del st.session_state[key]
+                                st.session_state.selected_section = exception_key
+                                st.session_state.selected_subsection = None
+                                st.rerun()
+                            
+                            # Close active div if it was opened
+                            if is_active:
+                                st.sidebar.markdown('</div>', unsafe_allow_html=True)
+                        
+                        st.sidebar.markdown('</div>', unsafe_allow_html=True)
+                    
                     st.sidebar.markdown('</div>', unsafe_allow_html=True)
             else:
                 # Section without subsections - just a clickable button
@@ -1439,7 +1519,7 @@ class MonitoringDashboard:
                 is_active = st.session_state.get('selected_section') == section_key
                 
                 # Section without subsections - just a clickable button
-                if st.sidebar.button(f"{section_icon} {section_name}", key=f"section_{section_key}", 
+                if st.sidebar.button(f"{section_icon} {section_name}", key=f"section_{section_key}_{i}", 
                                    help=f"Select {section_name}", use_container_width=True):
                     st.session_state.selected_section = section_key
                     st.session_state.selected_subsection = None
@@ -1478,6 +1558,8 @@ class MonitoringDashboard:
                 "interfaces": "🔗 Interfaces",
                 "extra_batch_connections": "⚡ Extra Batch Connections",
                 "hung_threads": "🧵 Hung Threads",
+                "miscellaneous_bridges": "🔗 Miscellaneous Bridges Processes",
+                "daily_exceptions": "⚠️ Daily Exceptions",
                 "online_exceptions_prd": "🌐 Online Exceptions - PRD",
                 "batch_exceptions_prd": "📦 Batch Exceptions - PRD",
                 "online_exceptions_uat": "🧪 Online Exceptions - UAT",
@@ -1792,6 +1874,30 @@ class MonitoringDashboard:
                     "Thread recovery tracking"
                 ]
             },
+            "miscellaneous_bridges": {
+                "title": "Miscellaneous Bridges Processes",
+                "icon": "🔗",
+                "color": "#6a1b9a",
+                "description": "Monitor various bridge processes including mass updates, interfaces, extra connections, and hung threads.",
+                "features": [
+                    "Mass Update monitoring",
+                    "Interface status tracking",
+                    "Extra Batch Connection analysis",
+                    "Hung Thread detection"
+                ]
+            },
+            "daily_exceptions": {
+                "title": "Daily Exceptions",
+                "icon": "⚠️",
+                "color": "#ff9800",
+                "description": "Monitor daily system exceptions across production and UAT environments.",
+                "features": [
+                    "Production exception tracking",
+                    "UAT exception monitoring", 
+                    "Online vs batch comparison",
+                    "Environment stability metrics"
+                ]
+            },
             "online_exceptions_prd": {
                 "title": "Online Exceptions - PRD",
                 "icon": "🌐",
@@ -2074,6 +2180,8 @@ class MonitoringDashboard:
             "interfaces": self.render_interfaces_content,
             "extra_batch_connections": self.render_extra_batch_connections_content,
             "hung_threads": self.render_hung_threads_content,
+            "miscellaneous_bridges": self.render_miscellaneous_bridges_content,
+            "daily_exceptions": self.render_daily_exceptions_content,
             "online_exceptions_prd": self.render_online_exceptions_prd_content,
             "batch_exceptions_prd": self.render_batch_exceptions_prd_content,
             "online_exceptions_uat": self.render_online_exceptions_uat_content,
@@ -3675,7 +3783,68 @@ class MonitoringDashboard:
         """Render Hung Threads specific content."""
         self.render_generic_section_content(df, selected_period, "Hung Threads", "🧵")
 
-    
+    def render_miscellaneous_bridges_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Miscellaneous Bridges Processes section overview."""
+        st.markdown("## 🔗 Miscellaneous Bridges Processes Overview")
+        st.markdown("Select a specific bridge process from the navigation menu to view detailed data.")
+        
+        # Show overview cards for each bridge process
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 🔄 Process Management")
+            st.info("""
+            **🔄 Mass Update**
+            Track mass update processes and system-wide changes.
+            
+            **🔗 Interfaces** 
+            Monitor system interfaces and integration points.
+            """)
+        
+        with col2:
+            st.markdown("### ⚡ Connection & Thread Monitoring")
+            st.info("""
+            **⚡ Extra Batch Connections**
+            Monitor additional batch connections and process execution.
+            
+            **🧵 Hung Threads**
+            Detect and monitor hung threads that may impact system performance.
+            """)
+        
+        st.markdown("---")
+        st.info("👆 Click on a bridge process item in the sidebar to view its contents")
+
+    def render_daily_exceptions_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Daily Exceptions section overview."""
+        st.markdown("## ⚠️ Daily Exceptions Overview")
+        st.markdown("Select a specific exception dashboard from the navigation menu to view detailed data.")
+        
+        # Show overview cards for each exception type
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 🏭 Production Environment")
+            st.info("""
+            **🌐 Online Exceptions - PRD**
+            Monitor online exceptions in the production environment.
+            
+            **💻 Batch Exceptions - PRD** 
+            Track batch process exceptions in production environment.
+            """)
+        
+        with col2:
+            st.markdown("### 🧪 UAT Environment")
+            st.info("""
+            **🧪 Online Exceptions - UAT**
+            Monitor online exceptions in the UAT environment.
+            
+            **🔬 Batch Exceptions - UAT**
+            Track batch process exceptions in UAT environment.
+            """)
+        
+        st.markdown("---")
+        st.info("👆 Click on a dashboard item in the sidebar to view its contents")
+
     def render_online_exceptions_prd_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Online Exceptions - PRD specific content."""
         self.render_generic_section_content(df, selected_period, "Online Exceptions - PRD", "🌐")
