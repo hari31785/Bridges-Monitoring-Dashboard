@@ -3997,15 +3997,7 @@ class MonitoringDashboard:
         display_height = min(600, max(200, len(display_df) * 35 + 100))
         st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
         
-        # Add info note about calculated columns
-        calculated_columns = []
-        if session_timeout_col and total_count_col:
-            calculated_columns.append("'Timeout Errors %' = (Session Timeout Errors / Total Count) × 100")
-        if errors_analysis_col and total_count_col:
-            calculated_columns.append("'Analysis Errors %' = (Errors Requiring Analysis / Total Count) × 100")
-        
-        if calculated_columns:
-            st.info(f"📊 **Calculated Columns Added:**\n" + "\n".join([f"• {calc}" for calc in calculated_columns]))
+
         
 # Old implementation removed - now using generic template
     
