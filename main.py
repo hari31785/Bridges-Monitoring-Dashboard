@@ -1391,7 +1391,7 @@ class MonitoringDashboard:
             {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2"},
             {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True, "color": "#ff9800", "active_color": "#f57c00"},
             {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True, "color": "#9c27b0", "active_color": "#7b1fa2"},
-            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Miscellaneous Bridges Processes", "has_subsections": True, "color": "#008b8b", "active_color": "#006064"}
+            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Other Critical Processes", "has_subsections": True, "color": "#008b8b", "active_color": "#006064"}
         ]
         
         # Render each main section with expandable functionality
@@ -1649,7 +1649,7 @@ class MonitoringDashboard:
                         st.sidebar.markdown('</div>', unsafe_allow_html=True)
                     
                     elif section_key == "miscellaneous_bridges":
-                        # Miscellaneous Bridges Processes subsections
+                        # Other Critical Processes subsections
                         st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
                         
                         # Define the miscellaneous subsections
@@ -1810,7 +1810,7 @@ class MonitoringDashboard:
                 "hung_threads": "🧵 Hung Threads",
                 "data_warehouse": "🏢 Data Warehouse",
                 "consolidated_inquiry": "🔍 Consolidated Inquiry",
-                "miscellaneous_bridges": "🔗 Miscellaneous Bridges Processes",
+                "miscellaneous_bridges": "🔗 Other Critical Processes",
                 "daily_exceptions": "⚠️ Daily Exceptions",
                 "prd_online_exceptions": "🌐 PRD Online Exceptions",
                 "prd_batch_exceptions": "� PRD Batch Exceptions",
@@ -2015,7 +2015,7 @@ class MonitoringDashboard:
             
             ⚠️ **Daily Exceptions** - Exception monitoring & resolution
             
-            🔧 **Miscellaneous Bridges Processes** - Bridge system monitoring
+            🔧 **Other Critical Processes** - Bridge system monitoring
             """)
     
     def render_section_home_page(self, section_key: str) -> None:
@@ -2155,7 +2155,7 @@ class MonitoringDashboard:
                 ]
             },
             "miscellaneous_bridges": {
-                "title": "Miscellaneous Bridges Processes",
+                "title": "Other Critical Processes",
                 "icon": "🔗",
                 "color": "#008b8b",
                 "description": "Monitor various bridge processes including mass updates, interfaces, extra connections, and hung threads.",
@@ -2489,7 +2489,7 @@ class MonitoringDashboard:
             "hung_threads": self.render_hung_threads_content,
             "data_warehouse": self.render_data_warehouse_content,
             "consolidated_inquiry": self.render_consolidated_inquiry_content,
-            "miscellaneous_bridges": self.render_miscellaneous_bridges_content,
+            "miscellaneous_bridges": self.render_other_critical_processes_content,
             "daily_exceptions": self.render_daily_exceptions_content,
             "prd_online_exceptions": self.render_prd_online_exceptions_content,
             "prd_batch_exceptions": self.render_prd_batch_exceptions_content,
@@ -2560,9 +2560,9 @@ class MonitoringDashboard:
             },
             {
                 "key": "miscellaneous_bridges",
-                "name": "Miscellaneous Bridges",
+                "name": "Other Critical Processes",
                 "icon": "🔗",
-                "description": "Mass updates, interfaces, connections & threads"
+                "description": "Critical system processes & background operations"
             }
         ]
         
@@ -2574,19 +2574,16 @@ class MonitoringDashboard:
         st.markdown(f"**Data as of:** {recent_date}")
         st.markdown("")  # Add spacing
         
-        # Create 3 columns for status cards (2 cards per column)
-        col1, col2, col3 = st.columns(3)
+        # Create status cards in a properly aligned 2x3 grid layout
+        # First row (3 cards)
+        col1, col2, col3 = st.columns(3, gap="medium")
         
-        for i, section in enumerate(dashboard_sections):
-            # Determine which column to use (cycling through 3 columns)
-            if i % 3 == 0:
-                current_col = col1
-            elif i % 3 == 1:
-                current_col = col2
-            else:
-                current_col = col3
-            
-            with current_col:
+        # First row cards
+        first_row_sections = dashboard_sections[:3]
+        columns = [col1, col2, col3]
+        
+        for i, section in enumerate(first_row_sections):
+            with columns[i]:
                 # Get status for this section
                 status, status_color, status_text = self.get_section_status(section["key"])
                 
@@ -2624,9 +2621,59 @@ class MonitoringDashboard:
                     st.session_state.selected_section = section["key"]
                     st.session_state.selected_subsection = None
                     st.rerun()
+        
+        # Add spacing between rows
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Second row (3 cards) 
+        col4, col5, col6 = st.columns(3, gap="medium")
+        
+        # Second row cards
+        second_row_sections = dashboard_sections[3:]
+        columns = [col4, col5, col6]
+        
+        for i, section in enumerate(second_row_sections):
+            with columns[i]:
+                # Get status for this section
+                status, status_color, status_text = self.get_section_status(section["key"])
                 
-                # Add some spacing between card groups
-                st.markdown("<br>", unsafe_allow_html=True)
+                # Create status card
+                self.render_status_card(
+                    section["name"],
+                    section["icon"], 
+                    section["description"],
+                    status,
+                    status_color,
+                    status_text
+                )
+                
+                # Add navigation button below each card
+                if st.button(
+                    f"📊 View {section['name']} Dashboard", 
+                    key=f"nav_to_{section['key']}", 
+                    help=f"Navigate to {section['name']} section",
+                    use_container_width=True
+                ):
+                    # Clear data state when navigating to a new section
+                    for key in list(st.session_state.keys()):
+                        if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
+                            del st.session_state[key]
+                    
+                    # Initialize expanded_sections if not exists
+                    if 'expanded_sections' not in st.session_state:
+                        st.session_state.expanded_sections = set()
+                    
+                    # Auto-expand the section in navigation (all sections in System Summary have subsections)
+                    # Clear other expanded sections and expand the target section
+                    st.session_state.expanded_sections.clear()
+                    st.session_state.expanded_sections.add(section["key"])
+                    
+                    st.session_state.selected_section = section["key"]
+                    st.session_state.selected_subsection = None
+                    st.rerun()
+        
+        # Add final spacing
+        st.markdown("<br>", unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -2686,7 +2733,7 @@ class MonitoringDashboard:
         elif section_key == "daily_exceptions":
             return self.get_daily_exceptions_status()
         elif section_key == "miscellaneous_bridges":
-            return self.get_miscellaneous_bridges_status()
+            return self.get_other_critical_processes_status()
         else:
             # Fallback for any unknown sections
             return ("normal", "#6c757d", "Status monitoring available")
@@ -2846,19 +2893,45 @@ class MonitoringDashboard:
             return ("warning", "#ffc107", f"Error checking data: {str(e)}")
     
     def get_daily_exceptions_status(self):
-        """Get status for Daily Exceptions section."""
+        """Get status for Daily Exceptions section based on PRD Online and PRD Batch exception counts."""
         try:
-            # This would check for exception data across PRD and UAT environments
-            # Since no real data source is configured yet, return data not available
-            return ("warning", "#ffc107", "Data not available")
+            from pathlib import Path
+            
+            # Get summary data for PRD Online and PRD Batch exceptions
+            prd_online_summary = get_daily_exceptions_summary("prd_online_exceptions")
+            prd_batch_summary = get_daily_exceptions_summary("prd_batch_exceptions")
+            
+            # Get the most recent counts (first row since data is sorted newest first)
+            prd_online_count = 0
+            prd_batch_count = 0
+            
+            if not prd_online_summary.empty:
+                count_col = [col for col in prd_online_summary.columns if col != "Date"][0]
+                prd_online_count = prd_online_summary.iloc[0][count_col] if len(prd_online_summary) > 0 else 0
+            
+            if not prd_batch_summary.empty:
+                count_col = [col for col in prd_batch_summary.columns if col != "Date"][0]
+                prd_batch_count = prd_batch_summary.iloc[0][count_col] if len(prd_batch_summary) > 0 else 0
+            
+            # Apply thresholds - if EITHER PRD Online OR PRD Batch exceeds thresholds
+            max_count = max(prd_online_count, prd_batch_count)
+            
+            if max_count > 15:
+                return ("critical", "#dc3545", f"High PRD exceptions: Online({prd_online_count}) Batch({prd_batch_count})")
+            elif max_count >= 11:
+                return ("warning", "#ffc107", f"Moderate PRD exceptions: Online({prd_online_count}) Batch({prd_batch_count})")
+            elif max_count <= 10:
+                return ("normal", "#28a745", f"Normal PRD exceptions: Online({prd_online_count}) Batch({prd_batch_count})")
+            else:
+                return ("normal", "#28a745", f"PRD exceptions: Online({prd_online_count}) Batch({prd_batch_count})")
                 
         except Exception as e:
-            return ("warning", "#ffc107", "Data not available")
+            return ("warning", "#ffc107", "Unable to check exception data")
     
-    def get_miscellaneous_bridges_status(self):
-        """Get status for Miscellaneous Bridges Processes section."""
+    def get_other_critical_processes_status(self):
+        """Get status for Other Critical Processes section."""
         try:
-            # Check for various bridge process data
+            # Check for various critical process data
             processes = ["Mass Update", "Interfaces", "Extra Batch Connections", "Hung Threads"]
             
             # Since no real data source is configured yet, return data not available
@@ -3165,6 +3238,20 @@ class MonitoringDashboard:
             bg_color = "#fff5f5"
             status_icon = "🚨"
         
+        # Calculate dynamic font size based on text length
+        if len(status_text) > 50:
+            status_font_size = "0.65rem"
+            status_line_height = "1.1"
+        elif len(status_text) > 35:
+            status_font_size = "0.7rem"  
+            status_line_height = "1.1"
+        elif len(status_text) > 25:
+            status_font_size = "0.75rem"
+            status_line_height = "1.2"
+        else:
+            status_font_size = "0.85rem"
+            status_line_height = "1.2"
+        
         # Create the status card with fixed height for consistency
         st.markdown(f"""
         <div style="
@@ -3178,17 +3265,34 @@ class MonitoringDashboard:
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            overflow: hidden;
+            position: relative;
         ">
-            <div>
+            <div style="flex: 1; overflow: hidden;">
                 <div style="display: flex; align-items: center; margin-bottom: 8px;">
                     <span style="font-size: 1.5rem; margin-right: 8px;">{icon}</span>
-                    <h4 style="margin: 0; color: #333; font-size: 1.1rem; line-height: 1.2;">{title}</h4>
+                    <h4 style="margin: 0; color: #333; font-size: 1.1rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">{title}</h4>
                 </div>
-                <p style="margin: 5px 0; color: #666; font-size: 0.85rem; line-height: 1.3;">{description}</p>
+                <p style="margin: 5px 0; color: #666; font-size: 0.85rem; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">{description}</p>
             </div>
-            <div style="display: flex; align-items: center; margin-top: auto;">
-                <span style="margin-right: 8px;">{status_icon}</span>
-                <span style="color: {color}; font-weight: bold; font-size: 0.85rem; line-height: 1.2;">{status_text}</span>
+            <div style="display: flex; align-items: center; margin-top: auto; min-height: 35px; overflow: hidden;">
+                <span style="margin-right: 8px; flex-shrink: 0; display: flex; align-items: center; height: 100%;">{status_icon}</span>
+                <span style="
+                    color: {color}; 
+                    font-weight: bold; 
+                    font-size: {status_font_size}; 
+                    line-height: {status_line_height}; 
+                    word-wrap: break-word; 
+                    word-break: break-word;
+                    hyphens: auto;
+                    overflow: hidden; 
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                    flex: 1;
+                    max-height: 30px;
+                    align-self: center;
+                ">{status_text}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -4277,9 +4381,9 @@ class MonitoringDashboard:
         """Render Consolidated Inquiry specific content."""
         self.render_generic_section_content(df, selected_period, "Consolidated Inquiry", "🔍")
 
-    def render_miscellaneous_bridges_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Miscellaneous Bridges Processes section overview."""
-        st.markdown("## 🔗 Miscellaneous Bridges Processes Overview")
+    def render_other_critical_processes_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Other Critical Processes section overview."""
+        st.markdown("## 🔗 Other Critical Processes Overview")
         st.markdown("Select a specific bridge process from the navigation menu to view detailed data.")
         
         # Show overview cards for each bridge process
