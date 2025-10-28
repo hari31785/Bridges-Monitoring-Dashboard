@@ -111,7 +111,7 @@ def sort_dataframe_by_date(df, ascending=False):
         col_lower = col.lower()
         
         # Skip obvious non-date columns
-        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout']
+        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'runtime']
         if any(keyword in col_lower for keyword in non_date_keywords):
             continue
             
@@ -175,7 +175,7 @@ def format_dataframe_dates(df):
         col_lower = col.lower()
         
         # Skip obvious non-date columns with more specific patterns
-        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread']
+        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread', 'runtime']
         if any(keyword in col_lower for keyword in non_date_keywords):
             continue
             
@@ -242,6 +242,14 @@ def format_percentage_columns(df):
                 # Check if column contains data that looks like percentages
                 sample_values = df_formatted[col].dropna().head(10)
                 if len(sample_values) > 0:
+                    # Skip variance columns that contain text values like "Above 10%" or "Below 10%"
+                    if 'variance' in col_lower:
+                        # Check if variance column contains text values
+                        first_non_null = sample_values.iloc[0] if len(sample_values) > 0 else None
+                        if first_non_null is not None and isinstance(first_non_null, str):
+                            if any(text in str(first_non_null).lower() for text in ['above', 'below', '%']):
+                                continue  # Skip formatting this variance column
+                    
                     # Convert to numeric first
                     numeric_series = pd.to_numeric(df_formatted[col], errors='coerce')
                     
@@ -341,28 +349,6 @@ def filter_data_to_recent_weeks(df, date_column=None, weeks_to_show=None):
         mask = df_filtered[date_column] >= filter_start_date
         df_filtered = df_filtered[mask]
         
-        # Add debug info in expandable section
-        with st.expander("📅 Date Filtering Info", expanded=False):
-            st.write(f"**Date Column Used:** {date_column}")
-            st.write(f"**Today:** {today.strftime('%A, %Y-%m-%d')}")
-            st.write(f"**Current Week Start (Monday):** {current_week_start.strftime('%A, %Y-%m-%d')}")
-            st.write(f"**Filter Start Date:** {filter_start_date.strftime('%A, %Y-%m-%d')} (showing last {weeks_to_show} weeks)")
-            st.write(f"**Records Before Filtering:** {len(df)}")
-            st.write(f"**Records After Filtering:** {len(df_filtered)}")
-            
-            if len(df_filtered) > 0:
-                min_date = df_filtered[date_column].min()
-                max_date = df_filtered[date_column].max()
-                st.write(f"**Date Range in Filtered Data:** {min_date.strftime('%A, %Y-%m-%d')} to {max_date.strftime('%A, %Y-%m-%d')}")
-                
-                # Show example of what weeks are included
-                st.write("**Weeks Included:**")
-                for i in range(weeks_to_show):
-                    week_start = current_week_start - timedelta(weeks=i)
-                    week_end = week_start + timedelta(days=6)
-                    week_label = "Current Week" if i == 0 else f"{i} Week{'s' if i > 1 else ''} Ago"
-                    st.write(f"• {week_label}: {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}")
-        
         return df_filtered
         
     except Exception as e:
@@ -373,6 +359,95 @@ def filter_data_to_recent_weeks(df, date_column=None, weeks_to_show=None):
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def get_daily_exceptions_summary(section: str) -> pd.DataFrame:
+    """
+    Get summary data for Daily Exceptions dashboards showing all available dates and row counts.
+    
+    Args:
+        section: The section key (e.g., 'prd_online_exceptions')
+        
+    Returns:
+        DataFrame with Date and count columns
+    """
+    from pathlib import Path
+    import pandas as pd
+    
+    # Map section keys to Excel sheet names
+    section_to_sheet_map = {
+        "prd_online_exceptions": "PRD Online",
+        "prd_batch_exceptions": "PRD Batch", 
+        "prd_batch_runtime": "PRD Batch Runtime",
+        "uat_online_exceptions": "UAT Online",
+        "uat_batch_exceptions": "UAT Batch",
+        "uat_batch_runtime": "UAT Batch Runtime"
+    }
+    
+    # Determine column names based on section type
+    runtime_sections = ["prd_batch_runtime", "uat_batch_runtime"]
+    if section in runtime_sections:
+        count_column = "Batch jobs that exceeded Average Runtime"
+    else:
+        count_column = "Number of New Exceptions"
+    
+    monitoring_data_path = Path("Monitoring Data Files")
+    daily_exceptions_path = monitoring_data_path / "Daily Exceptions"
+    
+    summary_data = []
+    
+    if daily_exceptions_path.exists():
+        sheet_name = section_to_sheet_map.get(section)
+        
+        if sheet_name:
+            # Find all Excel files in the Daily Exceptions folder
+            excel_files = []
+            for pattern in ['*.xlsx', '*.xls']:
+                excel_files.extend(daily_exceptions_path.glob(pattern))
+            
+            # Filter out temporary files
+            excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+            
+            # Sort by modification time (newest first)
+            excel_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+            
+            for excel_file in excel_files:
+                try:
+                    # Extract date from filename (remove extension)
+                    file_date = excel_file.stem
+                    
+                    # Read the specific sheet and count rows
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    row_count = len(df)
+                    
+                    summary_data.append({
+                        "Date": file_date,
+                        count_column: row_count
+                    })
+                    
+                except Exception as e:
+                    # If there's an error reading the file/sheet, skip it
+                    continue
+    
+    # Create DataFrame from summary data
+    if summary_data:
+        summary_df = pd.DataFrame(summary_data)
+        # Sort by date (newest first) - try to parse dates if possible
+        try:
+            summary_df['Date_parsed'] = pd.to_datetime(summary_df['Date'], errors='coerce')
+            summary_df = summary_df.sort_values('Date_parsed', ascending=False, na_last=True)
+            summary_df = summary_df.drop('Date_parsed', axis=1)
+        except:
+            # If date parsing fails, sort alphabetically (descending)
+            summary_df = summary_df.sort_values('Date', ascending=False)
+        
+        # Reset index to ensure clean DataFrame
+        summary_df = summary_df.reset_index(drop=True)
+        
+        return summary_df
+    else:
+        # Return empty DataFrame with correct columns
+        return pd.DataFrame(columns=["Date", count_column])
 
 
 class MonitoringDashboard:
@@ -428,9 +503,19 @@ class MonitoringDashboard:
             if period_path.exists():
                 # If a specific subsection is selected, look for that file
                 if subsection:
+                    # Map display names to actual file names for benefit issuance
+                    display_to_file_map = {
+                        "FAP Payments": "FAP Daily Issuance",
+                        "FIP Payments (EBT & Warrants)": "FIP Daily Issuance",
+                        "SDA Client Payments (EBT & Warrants)": "SDA Daily Client Payments"
+                    }
+                    
+                    # Use the mapped file name or the original subsection name
+                    actual_file_name = display_to_file_map.get(subsection, subsection)
+                    
                     # Try both .xlsx and .xls extensions
                     for ext in ['.xlsx', '.xls']:
-                        file_path = period_path / f"{subsection}{ext}"
+                        file_path = period_path / f"{actual_file_name}{ext}"
                         if file_path.exists() and not file_path.name.startswith('~$'):
                             return {
                                 "data_source_type": "excel",
@@ -536,6 +621,46 @@ class MonitoringDashboard:
                         "subsection": "Extra Connections Created"
                     }
         
+        # Handle Daily Exceptions sections
+        elif section in ["prd_online_exceptions", "prd_batch_exceptions", "prd_batch_runtime",
+                        "uat_online_exceptions", "uat_batch_exceptions", "uat_batch_runtime"]:
+            daily_exceptions_path = monitoring_data_path / "Daily Exceptions"
+            
+            if daily_exceptions_path.exists():
+                # Map section keys to Excel sheet names
+                section_to_sheet_map = {
+                    "prd_online_exceptions": "PRD Online",
+                    "prd_batch_exceptions": "PRD Batch", 
+                    "prd_batch_runtime": "PRD Batch Runtime",
+                    "uat_online_exceptions": "UAT Online",
+                    "uat_batch_exceptions": "UAT Batch",
+                    "uat_batch_runtime": "UAT Batch Runtime"
+                }
+                
+                # Find the most recent Excel file in the Daily Exceptions folder
+                excel_files = []
+                for pattern in ['*.xlsx', '*.xls']:
+                    excel_files.extend(daily_exceptions_path.glob(pattern))
+                
+                # Filter out temporary files
+                excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+                
+                if excel_files:
+                    # Sort by modification time to get the most recent file
+                    most_recent_file = max(excel_files, key=lambda f: f.stat().st_mtime)
+                    sheet_name = section_to_sheet_map.get(section)
+                    
+                    if sheet_name:
+                        return {
+                            "data_source_type": "excel",
+                            "workspace_file": most_recent_file,
+                            "uploaded_file": None,
+                            "use_default_file": False,
+                            "section": section,
+                            "sheet_name": sheet_name,
+                            "subsection": sheet_name
+                        }
+        
         # For other sections, use general workspace search
         excel_files = []
         
@@ -592,18 +717,24 @@ class MonitoringDashboard:
                     loader = ExcelDataLoader()
                     loader.set_file_path(str(workspace_file))
                     
-                    # Get available sheets
-                    sheets = loader.get_available_sources()
-                    
-                    if sheets and len(sheets) > 1:
-                        selected_sheet = st.sidebar.selectbox(
-                            "Select Sheet",
-                            options=sheets,
-                            help="Choose which sheet to load"
-                        )
-                        df = loader.load_data(sheet_name=selected_sheet)
+                    # Check if a specific sheet is required (e.g., for Daily Exceptions)
+                    if sidebar_config.get("sheet_name"):
+                        # Use the specified sheet directly
+                        specified_sheet = sidebar_config["sheet_name"]
+                        df = loader.load_data(sheet_name=specified_sheet)
                     else:
-                        df = loader.load_data()
+                        # Get available sheets and show selection
+                        sheets = loader.get_available_sources()
+                        
+                        if sheets and len(sheets) > 1:
+                            selected_sheet = st.sidebar.selectbox(
+                                "Select Sheet",
+                                options=sheets,
+                                help="Choose which sheet to load"
+                            )
+                            df = loader.load_data(sheet_name=selected_sheet)
+                        else:
+                            df = loader.load_data()
                     
                     return df
                 
@@ -713,7 +844,20 @@ class MonitoringDashboard:
                     name_without_ext = f.stem
                     file_names.append(name_without_ext)
             
-            return sorted(file_names)
+            # Map actual file names to display names for benefit issuance
+            file_to_display_map = {
+                "FAP Daily Issuance": "FAP Payments",
+                "FIP Daily Issuance": "FIP Payments (EBT & Warrants)",
+                "SDA Daily Client Payments": "SDA Client Payments (EBT & Warrants)"
+            }
+            
+            # Convert file names to display names
+            display_names = []
+            for file_name in file_names:
+                display_name = file_to_display_map.get(file_name, file_name)
+                display_names.append(display_name)
+            
+            return sorted(display_names)
         
         return []
     
@@ -1333,8 +1477,7 @@ class MonitoringDashboard:
                             {"key": "daily", "icon": "📈", "name": "Daily"},
                             {"key": "weekly", "icon": "📊", "name": "Weekly"},
                             {"key": "monthly", "icon": "📉", "name": "Monthly"},
-                            {"key": "quarterly", "icon": "📆", "name": "Quarterly"},
-                            {"key": "yearly", "icon": "📋", "name": "Yearly"}
+                            {"key": "quarterly", "icon": "📆", "name": "Quarterly"}
                         ]
                         
                         # Simple, clear button structure with indentation and smaller styling
@@ -1364,9 +1507,9 @@ class MonitoringDashboard:
                                 
                                 if available_files:
                                     file_icons = {
-                                        "FAP Daily Issuance": "💳",
-                                        "FIP Daily Issuance": "🏦", 
-                                        "SDA Daily Client Payments": "💰"
+                                        "FAP Payments": "💳",
+                                        "FIP Payments (EBT & Warrants)": "🏦", 
+                                        "SDA Client Payments (EBT & Warrants)": "💰"
                                     }
                                     
                                     # Indented file buttons with smaller styling
@@ -1558,12 +1701,14 @@ class MonitoringDashboard:
                         # Daily Exceptions subsections
                         st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
                         
-                        # Define the exception subsections
+                        # Define the exception subsections in the specified order
                         exception_sections = [
-                            {"key": "online_exceptions_prd", "icon": "🌐", "name": "Online Exceptions - PRD"},
-                            {"key": "batch_exceptions_prd", "icon": "💻", "name": "Batch Exceptions - PRD"},
-                            {"key": "online_exceptions_uat", "icon": "🧪", "name": "Online Exceptions - UAT"},
-                            {"key": "batch_exceptions_uat", "icon": "🔬", "name": "Batch Exceptions - UAT"}
+                            {"key": "prd_online_exceptions", "icon": "🌐", "name": "PRD Online Exceptions"},
+                            {"key": "prd_batch_exceptions", "icon": "💻", "name": "PRD Batch Exceptions"},
+                            {"key": "prd_batch_runtime", "icon": "⏱️", "name": "PRD Batch Runtime"},
+                            {"key": "uat_online_exceptions", "icon": "🧪", "name": "UAT Online Exceptions"},
+                            {"key": "uat_batch_exceptions", "icon": "🔬", "name": "UAT Batch Exceptions"},
+                            {"key": "uat_batch_runtime", "icon": "⏰", "name": "UAT Batch Runtime"}
                         ]
                         
                         # Hierarchical subsection buttons with tree symbols
@@ -1637,9 +1782,9 @@ class MonitoringDashboard:
         if current_section_key == "benefit_issuance":
             available_files = self.get_bi_monitoring_files(current_period_key)
             file_icons = {
-                "FAP Daily Issuance": "💳",
-                "FIP Daily Issuance": "🏦", 
-                "SDA Daily Client Payments": "💰"
+                "FAP Payments": "💳",
+                "FIP Payments (EBT & Warrants)": "🏦", 
+                "SDA Client Payments (EBT & Warrants)": "💰"
             }
             
 # Old code removed - now handled by loop above
@@ -1667,10 +1812,12 @@ class MonitoringDashboard:
                 "consolidated_inquiry": "🔍 Consolidated Inquiry",
                 "miscellaneous_bridges": "🔗 Miscellaneous Bridges Processes",
                 "daily_exceptions": "⚠️ Daily Exceptions",
-                "online_exceptions_prd": "🌐 Online Exceptions - PRD",
-                "batch_exceptions_prd": "📦 Batch Exceptions - PRD",
-                "online_exceptions_uat": "🧪 Online Exceptions - UAT",
-                "batch_exceptions_uat": "🔬 Batch Exceptions - UAT"
+                "prd_online_exceptions": "🌐 PRD Online Exceptions",
+                "prd_batch_exceptions": "� PRD Batch Exceptions",
+                "prd_batch_runtime": "⏱️ PRD Batch Runtime",
+                "uat_online_exceptions": "🧪 UAT Online Exceptions",
+                "uat_batch_exceptions": "🔬 UAT Batch Exceptions",
+                "uat_batch_runtime": "⏰ UAT Batch Runtime"
             }
             section_display = section_map.get(current_section_key, "📊 Benefit Issuance")
             # No longer needed with button-based navigation
@@ -1917,9 +2064,9 @@ class MonitoringDashboard:
                 "color": "#2196f3", 
                 "description": "Monitor benefit issuance processes including FAP, FIP, and SDA client payment tracking.",
                 "features": [
-                    "FAP Daily Issuance monitoring",
-                    "FIP Daily Issuance tracking", 
-                    "SDA Daily Client Payments",
+                    "FAP Payments",
+                    "FIP Payments (EBT & Warrants)", 
+                    "SDA Client Payments (EBT & Warrants)",
                     "Cross-program analysis"
                 ]
             },
@@ -2031,8 +2178,8 @@ class MonitoringDashboard:
                     "Environment stability metrics"
                 ]
             },
-            "online_exceptions_prd": {
-                "title": "Online Exceptions - PRD",
+            "prd_online_exceptions": {
+                "title": "PRD Online Exceptions",
                 "icon": "🌐",
                 "color": "#e91e63", 
                 "description": "Monitor online exceptions in the production environment.",
@@ -2043,8 +2190,8 @@ class MonitoringDashboard:
                     "Production stability metrics"
                 ]
             },
-            "batch_exceptions_prd": {
-                "title": "Batch Exceptions - PRD",
+            "prd_batch_exceptions": {
+                "title": "PRD Batch Exceptions",
                 "icon": "💻",
                 "color": "#3f51b5",
                 "description": "Track batch process exceptions in production environment.",
@@ -2055,8 +2202,20 @@ class MonitoringDashboard:
                     "Batch performance tracking"
                 ]
             },
-            "online_exceptions_uat": {
-                "title": "Online Exceptions - UAT", 
+            "prd_batch_runtime": {
+                "title": "PRD Batch Runtime",
+                "icon": "⏱️",
+                "color": "#ff9800",
+                "description": "Monitor batch process runtime performance in production environment.",
+                "features": [
+                    "Runtime performance tracking",
+                    "Production batch timing",
+                    "Performance optimization",
+                    "Execution time analysis"
+                ]
+            },
+            "uat_online_exceptions": {
+                "title": "UAT Online Exceptions", 
                 "icon": "🧪",
                 "color": "#009688",
                 "description": "Monitor online exceptions in the UAT testing environment.",
@@ -2067,8 +2226,8 @@ class MonitoringDashboard:
                     "Quality assurance metrics"
                 ]
             },
-            "batch_exceptions_uat": {
-                "title": "Batch Exceptions - UAT",
+            "uat_batch_exceptions": {
+                "title": "UAT Batch Exceptions",
                 "icon": "🔬",
                 "color": "#8bc34a", 
                 "description": "Track batch process exceptions in UAT environment.",
@@ -2077,6 +2236,18 @@ class MonitoringDashboard:
                     "Testing batch analysis",
                     "Pre-production validation",
                     "Batch testing metrics"
+                ]
+            },
+            "uat_batch_runtime": {
+                "title": "UAT Batch Runtime",
+                "icon": "⏰",
+                "color": "#9c27b0",
+                "description": "Monitor batch process runtime performance in UAT environment.",
+                "features": [
+                    "UAT runtime monitoring",
+                    "Testing batch timing",
+                    "Performance validation",
+                    "Pre-production timing analysis"
                 ]
             }
         }
@@ -2252,8 +2423,12 @@ class MonitoringDashboard:
         # Apply standardized date formatting to all date columns
         df = format_dataframe_dates(df)
         
-        # Filter to show only current week and previous week data
-        df = filter_data_to_recent_weeks(df)
+        # Filter to show only current week and previous week data (skip for Daily Exceptions)
+        daily_exceptions_sections = ['prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
+                                   'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime']
+        
+        if selected_section not in daily_exceptions_sections:
+            df = filter_data_to_recent_weeks(df)
         
         # Filter data based on selected period
         filtered_by_period_df = self.filter_data_by_period(df, selected_period)
@@ -2316,10 +2491,12 @@ class MonitoringDashboard:
             "consolidated_inquiry": self.render_consolidated_inquiry_content,
             "miscellaneous_bridges": self.render_miscellaneous_bridges_content,
             "daily_exceptions": self.render_daily_exceptions_content,
-            "online_exceptions_prd": self.render_online_exceptions_prd_content,
-            "batch_exceptions_prd": self.render_batch_exceptions_prd_content,
-            "online_exceptions_uat": self.render_online_exceptions_uat_content,
-            "batch_exceptions_uat": self.render_batch_exceptions_uat_content
+            "prd_online_exceptions": self.render_prd_online_exceptions_content,
+            "prd_batch_exceptions": self.render_prd_batch_exceptions_content,
+            "prd_batch_runtime": self.render_prd_batch_runtime_content,
+            "uat_online_exceptions": self.render_uat_online_exceptions_content,
+            "uat_batch_exceptions": self.render_uat_batch_exceptions_content,
+            "uat_batch_runtime": self.render_uat_batch_runtime_content
         }
         
         handler = section_handlers.get(selected_section)
@@ -2684,19 +2861,11 @@ class MonitoringDashboard:
             # Check for various bridge process data
             processes = ["Mass Update", "Interfaces", "Extra Batch Connections", "Hung Threads"]
             
-            # Simulate checking each process
-            import random
-            healthy_processes = random.randint(2, 4)
-            
-            if healthy_processes == 4:
-                return ("normal", "#28a745", f"All {healthy_processes} processes operational")
-            elif healthy_processes >= 3:
-                return ("warning", "#ffc107", f"{healthy_processes}/4 processes operational")
-            else:
-                return ("critical", "#dc3545", f"Only {healthy_processes}/4 processes operational")
+            # Since no real data source is configured yet, return data not available
+            return ("warning", "#ffc107", "Data not available")
                 
         except Exception as e:
-            return ("warning", "#ffc107", f"Error checking processes: {str(e)}")
+            return ("warning", "#ffc107", "Data not available")
     
     def get_most_recent_weekday_data(self, df):
         """Get the most recent weekday data from the dataframe."""
@@ -3087,16 +3256,16 @@ class MonitoringDashboard:
         variance_columns = []
         benefits_variance_col = None
         
-        # Look for specific "Variance in #Benefits" column first, with various possible formats
+        # Look for all variance-related columns
         for col in df.columns:
             col_lower = col.lower().strip()
-            # Prioritize exact matches for the benefits variance column
-            if ('variance' in col_lower and 
-                ('benefit' in col_lower or '#benefit' in col_lower or 'benefits' in col_lower or '#benefits' in col_lower or
-                 '# benefit' in col_lower or 'num benefit' in col_lower)):
-                benefits_variance_col = col
+            # Check for any variance columns
+            if ('variance' in col_lower):
                 variance_columns.append(col)
-                break  # Stop after finding the main target column
+                # Set the benefits variance column if this matches benefits patterns
+                if ('benefit' in col_lower or '#benefit' in col_lower or 'benefits' in col_lower or '#benefits' in col_lower or
+                    '# benefit' in col_lower or 'num benefit' in col_lower):
+                    benefits_variance_col = col
         
         # If we didn't find the specific benefits variance column, look for other variance columns
         if not variance_columns:
@@ -3111,31 +3280,6 @@ class MonitoringDashboard:
                     variance_columns.append(col)
         
         if variance_columns:
-            # Option to show debug info
-            with st.expander("🔍 Debug Variance Detection", expanded=False):
-                st.info(f"🔍 Detected variance columns: {variance_columns}")
-                if benefits_variance_col:
-                    st.success(f"✅ Found 'Variance in #Benefits' column: '{benefits_variance_col}'")
-                
-                st.write("📋 All columns in dataset:", df.columns.tolist())
-                
-                # Show sample variance values for debugging
-                for col in variance_columns:
-                    if col in df.columns:
-                        sample_values = df[col].head(5).tolist()
-                        st.write(f"📊 Sample values in '{col}': {sample_values}")
-                        
-                # Manual column selection for testing
-                st.write("🎯 Manual Override:")
-                manual_col = st.selectbox(
-                    "Select column to apply variance highlighting:",
-                    ["None"] + df.columns.tolist(),
-                    key="manual_variance_col"
-                )
-                if manual_col != "None":
-                    variance_columns = [manual_col]
-                    st.info(f"Using manual selection: {manual_col}")
-            
             # Create a copy of the dataframe for styling
             display_df = df.copy()
             
@@ -3193,18 +3337,6 @@ class MonitoringDashboard:
             # Display with custom styling and dynamic height
             display_height = min(600, max(200, len(df) * 35 + 100))
             st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
-            
-            # Add legend
-            st.markdown("""
-            <div style="margin-top: 10px;">
-                <small>
-                    🔴 <strong>Bold Red Rows</strong>: Entire row highlighted when Variance in #Benefits shows "Above 10%"<br>
-                    📍 <strong>Red Border</strong>: Marks the specific variance cell that triggered the highlighting<br>
-                    💰 <strong>Currency Format</strong>: "Amt issued" fields display as $X,XXX.XX with 2 decimal places<br>
-                    📊 <strong>Percentage Format</strong>: Columns with "%" show as percentages (0.04 → 4%), others as numbers (15.25)
-                </small>
-            </div>
-            """, unsafe_allow_html=True)
         else:
             # If no variance columns found, still apply currency formatting
             display_df = df.copy()
@@ -4217,21 +4349,145 @@ class MonitoringDashboard:
         st.markdown("---")
         st.info("👆 Click on a dashboard item in the sidebar to view its contents")
 
-    def render_online_exceptions_prd_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Online Exceptions - PRD specific content."""
-        self.render_generic_section_content(df, selected_period, "Online Exceptions - PRD", "🌐")
+    def render_daily_exceptions_content(self, section: str, title: str, icon: str) -> None:
+        """Render Daily Exceptions content with summary view and clickable date buttons."""
+        
+        # Check if a specific date is selected for detailed view
+        selected_date_key = f"selected_date_{section}"
+        selected_date = st.session_state.get(selected_date_key)
+        
+        if selected_date:
+            # Show detailed data for the selected date
+            st.subheader(f"{icon} {title} - {selected_date}")
+            
+            # Back button
+            if st.button("← Back to Summary", key=f"back_{section}"):
+                st.session_state[selected_date_key] = None
+                st.rerun()
+            
+            # Load and display detailed data for this date
+            try:
+                from pathlib import Path
+                
+                section_to_sheet_map = {
+                    "prd_online_exceptions": "PRD Online",
+                    "prd_batch_exceptions": "PRD Batch", 
+                    "prd_batch_runtime": "PRD Batch Runtime",
+                    "uat_online_exceptions": "UAT Online",
+                    "uat_batch_exceptions": "UAT Batch",
+                    "uat_batch_runtime": "UAT Batch Runtime"
+                }
+                
+                daily_exceptions_path = Path("Monitoring Data Files") / "Daily Exceptions"
+                excel_file = daily_exceptions_path / f"{selected_date}.xlsx"
+                sheet_name = section_to_sheet_map.get(section)
+                
+                if excel_file.exists() and sheet_name:
+                    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                    
+                    if not df.empty:
+                        # Format the data
+                        df_formatted = format_dataframe_dates(df)
+                        df_sorted = sort_dataframe_by_date(df_formatted, ascending=False)
+                        
+                        st.success(f"📊 Showing {len(df_sorted)} records from {selected_date}")
+                        
+                        # Show column information
+                        st.markdown(f"**📋 Data Columns:** {', '.join(df_sorted.columns)}")
+                        
+                        # Display the data with proper table formatting
+                        st.markdown("### 📊 Detailed Data")
+                        display_height = min(600, max(200, len(df_sorted) * 35 + 100))
+                        st.dataframe(
+                            df_sorted, 
+                            width="stretch", 
+                            height=display_height, 
+                            hide_index=True
+                        )
+                    else:
+                        st.info("📋 No data available for this date.")
+                else:
+                    st.error(f"❌ Could not load data for {selected_date}")
+                    
+            except Exception as e:
+                st.error(f"❌ Error loading data: {str(e)}")
+        
+        else:
+            # Show summary view with clickable date buttons
+            st.subheader(f"{icon} {title}")
+            
+            # Get summary data
+            summary_df = get_daily_exceptions_summary(section)
+            
+            if not summary_df.empty:
+                st.success(f"📊 Found {len(summary_df)} available dates")
+                
+                # Get the count column name
+                count_columns = [col for col in summary_df.columns if col != "Date"]
+                count_column_name = count_columns[0] if count_columns else "Count"
+                
+                # Display the table with integrated clickable buttons
+                st.markdown("### 📋 Available Dates and Counts")
+                st.markdown("*Click on any date to view detailed data*")
+                
+                # Create table headers
+                header_col1, header_col2 = st.columns([1, 1])
+                with header_col1:
+                    st.markdown("**Date**")
+                with header_col2:
+                    st.markdown(f"**{count_column_name}**")
+                
+                # Add separator line
+                st.markdown("---")
+                
+                # Create table rows with clickable date buttons integrated
+                for index, row in summary_df.iterrows():
+                    col1, col2 = st.columns([1, 1])
+                    
+                    with col1:
+                        # Clickable date button that looks like a table cell
+                        if st.button(
+                            f"📅 {row['Date']}", 
+                            key=f"date_btn_{section}_{index}",
+                            use_container_width=True,
+                            type="secondary"
+                        ):
+                            st.session_state[selected_date_key] = row['Date']
+                            st.rerun()
+                    
+                    with col2:
+                        # Count value in a formatted container to match button style
+                        count_value = row[count_column_name] if count_columns else 0
+                        st.markdown(
+                            f'<div style="background-color: #f8f9fa; padding: 0.5rem; border-radius: 0.25rem; text-align: center; margin: 2px 0; border: 1px solid #dee2e6; font-weight: 500;">{count_value}</div>', 
+                            unsafe_allow_html=True
+                        )
+            else:
+                st.info("📋 No Daily Exceptions data found in the Monitoring Data Files/Daily Exceptions folder.")
+
+    def render_prd_online_exceptions_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render PRD Online Exceptions specific content."""
+        self.render_daily_exceptions_content("prd_online_exceptions", "PRD Online Exceptions", "🌐")
     
-    def render_batch_exceptions_prd_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Batch Exceptions - PRD specific content."""
-        self.render_generic_section_content(df, selected_period, "Batch Exceptions - PRD", "📦")
+    def render_prd_batch_exceptions_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render PRD Batch Exceptions specific content."""
+        self.render_daily_exceptions_content("prd_batch_exceptions", "PRD Batch Exceptions", "💻")
     
-    def render_online_exceptions_uat_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Online Exceptions - UAT specific content."""
-        self.render_generic_section_content(df, selected_period, "Online Exceptions - UAT", "🧪")
+    def render_prd_batch_runtime_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render PRD Batch Runtime specific content."""
+        self.render_daily_exceptions_content("prd_batch_runtime", "PRD Batch Runtime", "⏱️")
     
-    def render_batch_exceptions_uat_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Batch Exceptions - UAT specific content."""
-        self.render_generic_section_content(df, selected_period, "Batch Exceptions - UAT", "🔬")
+    def render_uat_online_exceptions_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render UAT Online Exceptions specific content."""
+        self.render_daily_exceptions_content("uat_online_exceptions", "UAT Online Exceptions", "🧪")
+    
+    def render_uat_batch_exceptions_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render UAT Batch Exceptions specific content."""
+        self.render_daily_exceptions_content("uat_batch_exceptions", "UAT Batch Exceptions", "🔬")
+    
+    def render_uat_batch_runtime_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render UAT Batch Runtime specific content."""
+        self.render_daily_exceptions_content("uat_batch_runtime", "UAT Batch Runtime", "⏰")
     
     def render_user_impact_table(self, df: pd.DataFrame, title: str) -> None:
         """Render User Impact table WITHOUT percentage formatting to preserve original values."""
@@ -4929,8 +5185,8 @@ class MonitoringDashboard:
             
             # Check if we should load data (either has subsection OR is a section that loads data directly)
             sections_with_direct_data = ['extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
-                                       'online_exceptions_prd', 'batch_exceptions_prd', 'online_exceptions_uat', 
-                                       'batch_exceptions_uat']  # Sections that load data without subsections
+                                       'prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
+                                       'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime']  # Sections that load data without subsections
             should_load_data = selected_subsection or (selected_section in sections_with_direct_data)
             
             if should_load_data:
