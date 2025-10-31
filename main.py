@@ -116,13 +116,48 @@ def sort_dataframe_by_date(df, ascending=False):
             continue
             
         # Check if column name suggests it's a date
-        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']):
-            # Convert to datetime for proper sorting
-            try:
-                df_sorted[col] = pd.to_datetime(df_sorted[col], errors='coerce')
-                date_columns.append(col)
-            except:
-                pass
+        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp', 'week of']):
+            # Handle special case of "Week Of" columns with date ranges
+            if 'week of' in col_lower:
+                try:
+                    # Extract the end date from date ranges like "29-SEP To 03-OCT"
+                    def extract_end_date(date_range_str):
+                        if pd.isna(date_range_str):
+                            return pd.NaT
+                        str_val = str(date_range_str).strip()
+                        # Look for patterns like "DD-MMM To DD-MMM" or "DD-MMM-YYYY To DD-MMM-YYYY"
+                        if ' to ' in str_val.lower():
+                            parts = str_val.split(' To ')  # Keep original case
+                            if len(parts) == 2:
+                                end_date_str = parts[1].strip()
+                                # Add current year if not present
+                                if len(end_date_str.split('-')) == 2:  # Format: DD-MMM
+                                    from datetime import datetime
+                                    current_year = datetime.now().year
+                                    end_date_str = f"{end_date_str}-{current_year}"
+                                # Try to parse the end date
+                                try:
+                                    return pd.to_datetime(end_date_str, format='%d-%b-%Y', errors='coerce')
+                                except:
+                                    # Fallback to general parsing
+                                    try:
+                                        return pd.to_datetime(end_date_str, errors='coerce')
+                                    except:
+                                        return pd.NaT
+                        return pd.NaT
+                    
+                    # Create a sortable date column based on end dates
+                    df_sorted[col + '_sortable'] = df_sorted[col].apply(extract_end_date)
+                    date_columns.append(col + '_sortable')
+                except:
+                    pass
+            else:
+                # Regular date column processing
+                try:
+                    df_sorted[col] = pd.to_datetime(df_sorted[col], errors='coerce')
+                    date_columns.append(col)
+                except:
+                    pass
         else:
             # Check if column content looks like dates
             sample_values = df_sorted[col].dropna().head(3)
@@ -149,6 +184,11 @@ def sort_dataframe_by_date(df, ascending=False):
     if date_columns:
         # Sort by all date columns, with primary column first
         df_sorted = df_sorted.sort_values(by=date_columns, ascending=ascending, na_position='last')
+    
+    # Remove temporary sortable columns that were created for sorting
+    columns_to_remove = [col for col in df_sorted.columns if col.endswith('_sortable')]
+    if columns_to_remove:
+        df_sorted = df_sorted.drop(columns=columns_to_remove)
     
     return df_sorted
 
@@ -505,9 +545,17 @@ class MonitoringDashboard:
                 if subsection:
                     # Map display names to actual file names for benefit issuance
                     display_to_file_map = {
+                        # Daily files
                         "FAP Payments": "FAP Daily Issuance",
                         "FIP Payments (EBT & Warrants)": "FIP Daily Issuance",
-                        "SDA Client Payments (EBT & Warrants)": "SDA Daily Client Payments"
+                        "SDA Client Payments (EBT & Warrants)": "SDA Daily Client Payments",
+                        # Weekly files
+                        "CDC Warrants": "CDC Warrants",
+                        "SER Warrants": "SER Warrants", 
+                        "SDA Provider Payments": "SDA Provider Payments",
+                        "RAP/RCA Client Payments": "RAP-RCA Client Payments",
+                        "SSP Client Warrants": "SSP Client Warrants",
+                        "Vendoring Payments": "Vendoring Payments"
                     }
                     
                     # Use the mapped file name or the original subsection name
@@ -846,9 +894,17 @@ class MonitoringDashboard:
             
             # Map actual file names to display names for benefit issuance
             file_to_display_map = {
+                # Daily files
                 "FAP Daily Issuance": "FAP Payments",
                 "FIP Daily Issuance": "FIP Payments (EBT & Warrants)",
-                "SDA Daily Client Payments": "SDA Client Payments (EBT & Warrants)"
+                "SDA Daily Client Payments": "SDA Client Payments (EBT & Warrants)",
+                # Weekly files
+                "CDC Warrants": "CDC Warrants",
+                "SER Warrants": "SER Warrants", 
+                "SDA Provider Payments": "SDA Provider Payments",
+                "RAP-RCA Client Payments": "RAP/RCA Client Payments",
+                "SSP Client Warrants": "SSP Client Warrants",
+                "Vendoring Payments": "Vendoring Payments"
             }
             
             # Convert file names to display names
@@ -1507,9 +1563,17 @@ class MonitoringDashboard:
                                 
                                 if available_files:
                                     file_icons = {
+                                        # Daily files
                                         "FAP Payments": "💳",
                                         "FIP Payments (EBT & Warrants)": "🏦", 
-                                        "SDA Client Payments (EBT & Warrants)": "💰"
+                                        "SDA Client Payments (EBT & Warrants)": "💰",
+                                        # Weekly files
+                                        "CDC Warrants": "🎫",
+                                        "SER Warrants": "📝",
+                                        "SDA Provider Payments": "🏥",
+                                        "RAP/RCA Client Payments": "👥",
+                                        "SSP Client Warrants": "🏛️",
+                                        "Vendoring Payments": "🛒"
                                     }
                                     
                                     # Indented file buttons with smaller styling
@@ -3387,10 +3451,13 @@ class MonitoringDashboard:
             # Create a copy of the dataframe for styling
             display_df = df.copy()
             
-            # Format currency columns (Amt issued fields)
+            # Format currency columns (Amt issued fields) - exclude variance columns
             for col in display_df.columns:
                 col_lower = col.lower()
-                if 'amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower):
+                # Check for currency columns but exclude variance columns
+                is_currency_col = ('amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower))
+                is_variance_col = 'variance' in col_lower
+                if is_currency_col and not is_variance_col:
                     # Convert to numeric if needed and format as currency
                     try:
                         # Convert to numeric, handling any string values
@@ -3405,6 +3472,37 @@ class MonitoringDashboard:
             
             # Apply percentage formatting to all percentage-related columns
             display_df = format_percentage_columns(display_df)
+            
+            # Special handling for Vendoring Payments - if all benefit/amount columns are empty, show "No Vendoring Payments"
+            if "Vendoring Payments" in title:
+                # Find the # Benefits or Amt Issued columns (excluding variance columns)
+                benefit_cols = [col for col in display_df.columns 
+                              if ('benefit' in col.lower() or 'amt' in col.lower()) 
+                              and 'variance' not in col.lower()]
+                
+                if benefit_cols:
+                    # Check each row - if all benefit columns are null/empty/0, show "No Vendoring Payments"
+                    for idx, row in display_df.iterrows():
+                        all_empty = True
+                        for col in benefit_cols:
+                            val = row[col]
+                            # Check if value is meaningful (not null, not empty, not zero)
+                            if pd.notna(val) and str(val).strip() != '' and val != 0:
+                                all_empty = False
+                                break
+                        
+                        if all_empty:
+                            # Set the first benefit column to show "No Vendoring Payments"
+                            display_df.loc[idx, benefit_cols[0]] = "No Vendoring Payments"
+            
+            # Handle null/empty variance columns - fill with meaningful text ONLY if truly null/empty
+            for col in variance_columns:
+                if col in display_df.columns:
+                    # Only replace truly null values, preserve existing text like "Below 10%", "Above 10%", etc.
+                    display_df[col] = display_df[col].fillna('N/A')
+                    # Only replace empty strings, not text values
+                    mask = (display_df[col] == '') & (display_df[col].notna())
+                    display_df[col] = display_df[col].where(~mask, 'N/A')
             
             # Function to highlight entire row where variance text is "Above 10%"
             def highlight_variance_rows(row):
@@ -3445,10 +3543,13 @@ class MonitoringDashboard:
             # If no variance columns found, still apply currency formatting
             display_df = df.copy()
             
-            # Format currency columns (Amt issued fields)
+            # Format currency columns (Amt issued fields) - exclude variance columns
             for col in display_df.columns:
                 col_lower = col.lower()
-                if 'amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower):
+                # Check for currency columns but exclude variance columns
+                is_currency_col = ('amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower))
+                is_variance_col = 'variance' in col_lower
+                if is_currency_col and not is_variance_col:
                     # Convert to numeric if needed and format as currency
                     try:
                         # Convert to numeric, handling any string values
@@ -3463,6 +3564,38 @@ class MonitoringDashboard:
             
             # Apply percentage formatting to all percentage-related columns
             display_df = format_percentage_columns(display_df)
+            
+            # Special handling for Vendoring Payments - if all benefit/amount columns are empty, show "No Vendoring Payments"
+            if "Vendoring Payments" in title:
+                # Find the # Benefits or Amt Issued columns (excluding variance columns)
+                benefit_cols = [col for col in display_df.columns 
+                              if ('benefit' in col.lower() or 'amt' in col.lower()) 
+                              and 'variance' not in col.lower()]
+                
+                if benefit_cols:
+                    # Check each row - if all benefit columns are null/empty/0, show "No Vendoring Payments"
+                    for idx, row in display_df.iterrows():
+                        all_empty = True
+                        for col in benefit_cols:
+                            val = row[col]
+                            # Check if value is meaningful (not null, not empty, not zero)
+                            if pd.notna(val) and str(val).strip() != '' and val != 0:
+                                all_empty = False
+                                break
+                        
+                        if all_empty:
+                            # Set the first benefit column to show "No Vendoring Payments"
+                            display_df.loc[idx, benefit_cols[0]] = "No Vendoring Payments"
+            
+            # Handle any variance columns that might have been missed in detection
+            for col in display_df.columns:
+                col_lower = col.lower().strip()
+                if 'variance' in col_lower:
+                    # Only replace truly null/empty values, preserve existing text
+                    display_df[col] = display_df[col].fillna('N/A')
+                    # Only replace empty strings, not text values
+                    mask = (display_df[col] == '') & (display_df[col].notna())
+                    display_df[col] = display_df[col].where(~mask, 'N/A')
             
             # Use regular table with dynamic height
             display_height = min(600, max(200, len(display_df) * 35 + 100))
