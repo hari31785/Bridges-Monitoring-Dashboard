@@ -23,6 +23,69 @@ except ImportError as e:
     st.stop()
 
 
+def format_date_to_month_year(date_input):
+    """
+    Convert any date format to Mon-YYYY format for Month & Year columns.
+    
+    Args:
+        date_input: Date in various formats (string, datetime, pandas timestamp, etc.)
+        
+    Returns:
+        String in Mon-YYYY format or original value if conversion fails
+    """
+    if pd.isna(date_input) or date_input is None or str(date_input).strip() == '':
+        return date_input
+    
+    try:
+        # Convert to string first
+        date_str = str(date_input).strip()
+        
+        # If already in Mon-YYYY format, return as is
+        if re.match(r'[A-Z][a-z]{2}-\d{4}', date_str):
+            return date_str
+        
+        # Handle pandas timestamps
+        if hasattr(date_input, 'strftime'):
+            return date_input.strftime('%b-%Y')
+        
+        # Try to parse various date formats
+        date_formats = [
+            '%Y-%m-%d',           # 2025-11-25
+            '%m/%d/%Y',           # 11/25/2025
+            '%d/%m/%Y',           # 25/11/2025
+            '%Y/%m/%d',           # 2025/11/25
+            '%d-%m-%Y',           # 25-11-2025
+            '%m-%d-%Y',           # 11-25-2025
+            '%Y%m%d',             # 20251125
+            '%d.%m.%Y',           # 25.11.2025
+            '%m.%d.%Y',           # 11.25.2025
+            '%d %B %Y',           # 25 November 2025
+            '%B %d, %Y',          # November 25, 2025
+            '%d %b %Y',           # 25 Nov 2025
+            '%b %d, %Y',          # Nov 25, 2025
+        ]
+        
+        # Try each format
+        for fmt in date_formats:
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                return parsed_date.strftime('%b-%Y')
+            except ValueError:
+                continue
+        
+        # Try pandas to_datetime as fallback
+        try:
+            parsed_date = pd.to_datetime(date_str)
+            return parsed_date.strftime('%b-%Y')
+        except:
+            pass
+        
+        # If all parsing fails, return original value
+        return date_input
+        
+    except Exception:
+        return date_input
+
 def format_date_to_standard(date_input):
     """
     Convert any date format to DD-MON-YYYY format.
@@ -116,7 +179,11 @@ def sort_dataframe_by_date(df, ascending=False):
             continue
             
         # Check if column name suggests it's a date
-        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp', 'week of']):
+        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp', 'week of']) or \
+           ('month' in col_lower and 'year' in col_lower):
+            # Exclude columns that are clearly not dates (like processing times)
+            if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
+                continue
             # Handle special case of "Week Of" columns with date ranges
             if 'week of' in col_lower:
                 try:
@@ -221,6 +288,12 @@ def format_dataframe_dates(df):
             
         # Check if column name suggests it's a date
         if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']):
+            # Exclude columns that are clearly not dates (like processing times)
+            if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
+                continue
+            date_columns.append(col)
+        # Handle Month & Year columns separately with custom formatting
+        elif 'month' in col_lower and 'year' in col_lower:
             date_columns.append(col)
         else:
             # Check if column content looks like dates (sample first few non-null values)
@@ -243,7 +316,11 @@ def format_dataframe_dates(df):
     
     # Format identified date columns
     for col in date_columns:
-        df_formatted[col] = df_formatted[col].apply(format_date_to_standard)
+        # Special formatting for Month & Year columns to show Mon-YYYY format
+        if 'month' in col.lower() and 'year' in col.lower():
+            df_formatted[col] = df_formatted[col].apply(format_date_to_month_year)
+        else:
+            df_formatted[col] = df_formatted[col].apply(format_date_to_standard)
     
     return df_formatted
 
@@ -353,12 +430,16 @@ def filter_data_to_recent_weeks(df, date_column=None, weeks_to_show=None):
                 continue
                 
             # Check if column name suggests it's a date
-            if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']):
+            if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']) or \
+               ('month' in col_lower and 'year' in col_lower):
+                # Exclude columns that are clearly not dates (like processing times)
+                if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
+                    continue
                 date_columns.append(col)
         
         # Use the first date column found
         date_column = date_columns[0] if date_columns else None
-    
+        
     if date_column is None or date_column not in df_filtered.columns:
         # No date column found, return original data
         return df_filtered
@@ -367,20 +448,32 @@ def filter_data_to_recent_weeks(df, date_column=None, weeks_to_show=None):
         # Convert date column to datetime
         df_filtered[date_column] = pd.to_datetime(df_filtered[date_column], errors='coerce')
         
-        # Calculate date range for filtering - ensure we include complete weeks
+        # Calculate date range for filtering
         today = datetime.now()
         
-        # Get the start of current week (Monday)
-        days_since_monday = today.weekday()  # Monday = 0, Sunday = 6
-        current_week_start = today - timedelta(days=days_since_monday)
+        # Check if this is monthly data by looking at the date column name
+        date_col_lower = date_column.lower()
+        is_monthly_data = ('month' in date_col_lower and 'year' in date_col_lower)
         
-        # Set time to start of day for consistent comparison
-        current_week_start = current_week_start.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        # Calculate how many complete weeks back to include
-        # If weeks_to_show = 2, we want current week + 1 previous complete week
-        weeks_back = weeks_to_show - 1
-        filter_start_date = current_week_start - timedelta(weeks=weeks_back)
+        if is_monthly_data:
+            # For monthly data, limit to 4 most recent records instead of date filtering
+            # Sort by date descending and take top 4 records
+            df_filtered = df_filtered.sort_values(by=date_column, ascending=False)
+            df_filtered = df_filtered.head(4)
+            return df_filtered
+        else:
+            # For weekly/daily data, use week-based filtering
+            # Get the start of current week (Monday)
+            days_since_monday = today.weekday()  # Monday = 0, Sunday = 6
+            current_week_start = today - timedelta(days=days_since_monday)
+            
+            # Set time to start of day for consistent comparison
+            current_week_start = current_week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            # Calculate how many complete weeks back to include
+            # If weeks_to_show = 2, we want current week + 1 previous complete week
+            weeks_back = weeks_to_show - 1
+            filter_start_date = current_week_start - timedelta(weeks=weeks_back)
         
         # For better clarity: if today is Wednesday and we want 2 weeks,
         # we should get all data from Monday of last week through today
@@ -533,7 +626,6 @@ class MonitoringDashboard:
                 "daily": "Daily",
                 "weekly": "Weekly", 
                 "monthly": "Monthly",
-                "quarterly": "Quarterly",
                 "yearly": "Yearly"
             }
             
@@ -555,7 +647,10 @@ class MonitoringDashboard:
                         "SDA Provider Payments": "SDA Provider Payments",
                         "RAP/RCA Client Payments": "RAP-RCA Client Payments",
                         "SSP Client Warrants": "SSP Client Warrants",
-                        "Vendoring Payments": "Vendoring Payments"
+                        "Vendoring Payments": "Vendoring Payments",
+                        # Monthly files
+                        "FAP Payroll": "FAP Payroll",
+                        "Cash Payroll": "Cash Payroll"
                     }
                     
                     # Use the mapped file name or the original subsection name
@@ -872,7 +967,6 @@ class MonitoringDashboard:
             "daily": "Daily",
             "weekly": "Weekly", 
             "monthly": "Monthly",
-            "quarterly": "Quarterly",
             "yearly": "Yearly"
         }
         
@@ -904,7 +998,10 @@ class MonitoringDashboard:
                 "SDA Provider Payments": "SDA Provider Payments",
                 "RAP-RCA Client Payments": "RAP/RCA Client Payments",
                 "SSP Client Warrants": "SSP Client Warrants",
-                "Vendoring Payments": "Vendoring Payments"
+                "Vendoring Payments": "Vendoring Payments",
+                # Monthly files
+                "FAP Payroll": "FAP Payroll",
+                "Cash Payroll": "Cash Payroll"
             }
             
             # Convert file names to display names
@@ -1532,8 +1629,7 @@ class MonitoringDashboard:
                         period_sections = [
                             {"key": "daily", "icon": "📈", "name": "Daily"},
                             {"key": "weekly", "icon": "📊", "name": "Weekly"},
-                            {"key": "monthly", "icon": "📉", "name": "Monthly"},
-                            {"key": "quarterly", "icon": "📆", "name": "Quarterly"}
+                            {"key": "monthly", "icon": "📉", "name": "Monthly"}
                         ]
                         
                         # Simple, clear button structure with indentation and smaller styling
@@ -2487,12 +2583,8 @@ class MonitoringDashboard:
         # Apply standardized date formatting to all date columns
         df = format_dataframe_dates(df)
         
-        # Filter to show only current week and previous week data (skip for Daily Exceptions)
-        daily_exceptions_sections = ['prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
-                                   'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime']
-        
-        if selected_section not in daily_exceptions_sections:
-            df = filter_data_to_recent_weeks(df)
+        # Apply date range filtering to all sections (including Daily Exceptions)
+        df = filter_data_to_recent_weeks(df)
         
         # Filter data based on selected period
         filtered_by_period_df = self.filter_data_by_period(df, selected_period)
@@ -2943,7 +3035,7 @@ class MonitoringDashboard:
                 return ("warning", "#ffc107", "Data not available")
             
             # Check for different time period folders
-            folders = ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
+            folders = ["Daily", "Weekly", "Monthly", "Yearly"]
             available_folders = [f for f in folders if (bi_path / f).exists()]
             
             if len(available_folders) >= 4:
@@ -5103,9 +5195,13 @@ class MonitoringDashboard:
             # Skip obvious non-date columns with more specific patterns
             non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread']
             if any(keyword in col_lower for keyword in non_date_keywords):
+                st.write(f"🔍 DEBUG PERIOD FILTER: Skipping '{col}' - contains non-date keyword")
                 continue
                 
             if any(keyword in col_lower for keyword in ['date', 'time', 'day', 'month', 'year']):
+                # Exclude columns that are clearly not dates (like processing times)
+                if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
+                    continue
                 try:
                     # Try to convert to datetime if it's not already
                     if df[col].dtype == 'object':
@@ -5158,16 +5254,24 @@ class MonitoringDashboard:
                 cols = st.columns(min(3, len(numeric_cols)))
                 for i, col in enumerate(numeric_cols[:6]):  # Limit to 6 numeric filters
                     with cols[i % 3]:
+                        # Skip columns that are all NaN
+                        if df[col].isna().all():
+                            continue
+                        
                         min_val = float(df[col].min())
                         max_val = float(df[col].max())
-                        if min_val != max_val:
-                            filters[col] = st.slider(
-                                f"{col}",
-                                min_value=min_val,
-                                max_value=max_val,
-                                value=(min_val, max_val),
-                                key=f"filter_{col}"
-                            )
+                        
+                        # Skip columns with NaN min/max or identical values
+                        if pd.isna(min_val) or pd.isna(max_val) or min_val == max_val:
+                            continue
+                            
+                        filters[col] = st.slider(
+                            f"{col}",
+                            min_value=min_val,
+                            max_value=max_val,
+                            value=(min_val, max_val),
+                            key=f"filter_{col}"
+                        )
             
             # Categorical filters
             if categorical_cols:
