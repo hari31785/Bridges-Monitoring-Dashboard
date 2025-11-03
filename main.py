@@ -3373,6 +3373,10 @@ class MonitoringDashboard:
             st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
+        # Special preprocessing for Vendoring Payments BEFORE filtering
+        if selected_subsection and "Vendoring Payments" in selected_subsection:
+            df = self.preprocess_vendoring_payments(df)
+        
         # Filters in main area with expander
         with st.expander("🔍 **Data Filters**", expanded=False):
             filters = self.create_inline_filters(df)
@@ -3406,6 +3410,85 @@ class MonitoringDashboard:
         
         with tab3:
             self.render_custom_analysis(filtered_df, key_prefix="benefit_")
+    
+    def preprocess_vendoring_payments(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Preprocess Vendoring Payments data to handle empty rows before filtering."""
+        import pandas as pd
+        
+        # Apply standard processing first
+        sorted_df = sort_dataframe_by_date(df, ascending=False)
+        formatted_df = format_dataframe_dates(sorted_df)
+        display_df = formatted_df.copy()
+        
+        # Apply currency formatting
+        for col in display_df.columns:
+            col_lower = col.lower()
+            is_currency_col = ('amt issued' in col_lower or 'amount issued' in col_lower or ('amt' in col_lower and 'issued' in col_lower))
+            is_variance_col = 'variance' in col_lower
+            if is_currency_col and not is_variance_col:
+                try:
+                    display_df[col] = pd.to_numeric(display_df[col], errors='coerce')
+                    display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "")
+                except:
+                    pass
+        
+        # Apply percentage formatting
+        display_df = format_percentage_columns(display_df)
+        
+        # Find date column (Week Of or Date)
+        date_col = None
+        for col in display_df.columns:
+            if 'week of' in col.lower() or 'date' in col.lower():
+                date_col = col
+                break
+        
+        # Find all non-date columns
+        data_cols = [col for col in display_df.columns if col != date_col]
+        
+        if date_col and data_cols:
+            # Check each row - if all data columns are null/empty, restructure
+            rows_to_update = []
+            for idx, row in display_df.iterrows():
+                all_empty = True
+                for col in data_cols:
+                    val = row[col]
+                    if pd.notna(val) and str(val).strip() != '' and val != 0:
+                        all_empty = False
+                        break
+                if all_empty:
+                    rows_to_update.append(idx)
+            
+            if rows_to_update:
+                # If ALL rows are empty, simplify to just date + status columns
+                if len(rows_to_update) == len(display_df):
+                    # All rows empty - create simplified structure
+                    new_columns = [date_col, 'Status']
+                    new_data = []
+                    for idx in range(len(display_df)):
+                        new_data.append([display_df.loc[idx, date_col], 'No Vendoring Payments'])
+                    display_df = pd.DataFrame(new_data, columns=new_columns)
+                else:
+                    # Mixed data - keep original structure but mark empty rows
+                    first_data_col = None
+                    for col in data_cols:
+                        if 'benefit' in col.lower():
+                            first_data_col = col
+                            break
+                    if not first_data_col:
+                        first_data_col = data_cols[0]
+                    
+                    # Convert columns to object type to avoid dtype warnings
+                    for col in data_cols:
+                        display_df[col] = display_df[col].astype('object')
+                    
+                    for idx in rows_to_update:
+                        display_df.loc[idx, first_data_col] = 'No Vendoring Payments'
+                        # Clear other data columns for empty rows
+                        for col in data_cols:
+                            if col != first_data_col:
+                                display_df.loc[idx, col] = ''
+        
+        return display_df
     
     def render_benefit_issuance_table(self, df: pd.DataFrame, title: str) -> None:
         """Render benefit issuance table with variance highlighting."""
@@ -3473,27 +3556,7 @@ class MonitoringDashboard:
             # Apply percentage formatting to all percentage-related columns
             display_df = format_percentage_columns(display_df)
             
-            # Special handling for Vendoring Payments - if all benefit/amount columns are empty, show "No Vendoring Payments"
-            if "Vendoring Payments" in title:
-                # Find the # Benefits or Amt Issued columns (excluding variance columns)
-                benefit_cols = [col for col in display_df.columns 
-                              if ('benefit' in col.lower() or 'amt' in col.lower()) 
-                              and 'variance' not in col.lower()]
-                
-                if benefit_cols:
-                    # Check each row - if all benefit columns are null/empty/0, show "No Vendoring Payments"
-                    for idx, row in display_df.iterrows():
-                        all_empty = True
-                        for col in benefit_cols:
-                            val = row[col]
-                            # Check if value is meaningful (not null, not empty, not zero)
-                            if pd.notna(val) and str(val).strip() != '' and val != 0:
-                                all_empty = False
-                                break
-                        
-                        if all_empty:
-                            # Set the first benefit column to show "No Vendoring Payments"
-                            display_df.loc[idx, benefit_cols[0]] = "No Vendoring Payments"
+
             
             # Handle null/empty variance columns - fill with meaningful text ONLY if truly null/empty
             for col in variance_columns:
@@ -3564,28 +3627,6 @@ class MonitoringDashboard:
             
             # Apply percentage formatting to all percentage-related columns
             display_df = format_percentage_columns(display_df)
-            
-            # Special handling for Vendoring Payments - if all benefit/amount columns are empty, show "No Vendoring Payments"
-            if "Vendoring Payments" in title:
-                # Find the # Benefits or Amt Issued columns (excluding variance columns)
-                benefit_cols = [col for col in display_df.columns 
-                              if ('benefit' in col.lower() or 'amt' in col.lower()) 
-                              and 'variance' not in col.lower()]
-                
-                if benefit_cols:
-                    # Check each row - if all benefit columns are null/empty/0, show "No Vendoring Payments"
-                    for idx, row in display_df.iterrows():
-                        all_empty = True
-                        for col in benefit_cols:
-                            val = row[col]
-                            # Check if value is meaningful (not null, not empty, not zero)
-                            if pd.notna(val) and str(val).strip() != '' and val != 0:
-                                all_empty = False
-                                break
-                        
-                        if all_empty:
-                            # Set the first benefit column to show "No Vendoring Payments"
-                            display_df.loc[idx, benefit_cols[0]] = "No Vendoring Payments"
             
             # Handle any variance columns that might have been missed in detection
             for col in display_df.columns:
