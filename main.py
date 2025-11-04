@@ -113,6 +113,7 @@ def format_date_to_standard(date_input):
         
         # Try to parse various date formats
         date_formats = [
+            '%Y-%m-%d %H:%M:%S',  # 2024-10-08 14:30:00 (datetime format)
             '%Y-%m-%d',           # 2024-10-08
             '%m/%d/%Y',           # 10/08/2024
             '%d/%m/%Y',           # 08/10/2024
@@ -305,6 +306,7 @@ def format_dataframe_dates(df):
                     # More specific date pattern matching - avoid simple numbers
                     if (re.match(r'\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}', val_str) or  # MM/DD/YYYY or DD/MM/YYYY
                         re.match(r'\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}', val_str) or  # YYYY/MM/DD
+                        re.match(r'\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d{1,2}:\d{1,2}', val_str) or  # YYYY-MM-DD HH:MM:SS
                         re.match(r'\d{1,2} \w{3,} \d{4}', val_str) or            # DD Month YYYY
                         re.match(r'\w{3,} \d{1,2}, \d{4}', val_str)) and \
                        not val_str.isdigit():  # Exclude pure numbers
@@ -764,6 +766,84 @@ class MonitoringDashboard:
                         "subsection": "Extra Connections Created"
                     }
         
+        elif section == "mass_update":
+            # Handle Mass Update section - look in a Mass Update folder if it exists
+            mass_update_path = monitoring_data_path / "Mass Update"
+            if mass_update_path.exists():
+                # Find Excel files in Mass Update folder
+                excel_files = []
+                for pattern in ['*.xlsx', '*.xls']:
+                    excel_files.extend(mass_update_path.glob(pattern))
+                
+                # Filter out temporary files
+                excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+                
+                if excel_files:
+                    # Use the first/most recent Excel file
+                    selected_file = excel_files[0]
+                    return {
+                        "data_source_type": "excel",
+                        "workspace_file": selected_file,
+                        "uploaded_file": None,
+                        "use_default_file": False,
+                        "section": section,
+                        "subsection": "Mass Update Data"
+                    }
+            # Return None if no folder or files found - this will trigger our graceful handling
+            return None
+        
+        elif section == "interfaces":
+            # Handle Interfaces section - look in an Interfaces folder if it exists
+            interfaces_path = monitoring_data_path / "Interfaces"
+            if interfaces_path.exists():
+                # Find Excel files in Interfaces folder
+                excel_files = []
+                for pattern in ['*.xlsx', '*.xls']:
+                    excel_files.extend(interfaces_path.glob(pattern))
+                
+                # Filter out temporary files
+                excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+                
+                if excel_files:
+                    # Use the first/most recent Excel file
+                    selected_file = excel_files[0]
+                    return {
+                        "data_source_type": "excel",
+                        "workspace_file": selected_file,
+                        "uploaded_file": None,
+                        "use_default_file": False,
+                        "section": section,
+                        "subsection": "Interfaces Data"
+                    }
+            # Return None if no folder or files found - this will trigger our graceful handling
+            return None
+        
+        elif section == "hung_threads":
+            # Handle Hung Threads section - look in a Hung Threads folder if it exists
+            hung_threads_path = monitoring_data_path / "Hung Threads"
+            if hung_threads_path.exists():
+                # Find Excel files in Hung Threads folder
+                excel_files = []
+                for pattern in ['*.xlsx', '*.xls']:
+                    excel_files.extend(hung_threads_path.glob(pattern))
+                
+                # Filter out temporary files
+                excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+                
+                if excel_files:
+                    # Use the first/most recent Excel file
+                    selected_file = excel_files[0]
+                    return {
+                        "data_source_type": "excel",
+                        "workspace_file": selected_file,
+                        "uploaded_file": None,
+                        "use_default_file": False,
+                        "section": section,
+                        "subsection": "Hung Threads Data"
+                    }
+            # Return None if no folder or files found - this will trigger our graceful handling
+            return None
+
         # Handle Daily Exceptions sections
         elif section in ["prd_online_exceptions", "prd_batch_exceptions", "prd_batch_runtime",
                         "uat_online_exceptions", "uat_batch_exceptions", "uat_batch_runtime"]:
@@ -802,6 +882,31 @@ class MonitoringDashboard:
                             "section": section,
                             "sheet_name": sheet_name,
                             "subsection": sheet_name
+                        }
+        
+        # Handle Batch Status sections
+        elif section in ["uat_batch_status", "prd_batch_status"]:
+            batch_status_path = monitoring_data_path / "Batch Status"
+            
+            if batch_status_path.exists():
+                # Map section keys to Excel file names
+                section_to_file_map = {
+                    "uat_batch_status": "UAT.xlsx",
+                    "prd_batch_status": "Production.xlsx"
+                }
+                
+                file_name = section_to_file_map.get(section)
+                if file_name:
+                    file_path = batch_status_path / file_name
+                    
+                    if file_path.exists():
+                        return {
+                            "data_source_type": "excel",
+                            "workspace_file": file_path,
+                            "uploaded_file": None,
+                            "use_default_file": False,
+                            "section": section,
+                            "subsection": section
                         }
         
         # For other sections, use general workspace search
@@ -1531,6 +1636,12 @@ class MonitoringDashboard:
         current_period_key = st.session_state.get('selected_period', 'daily')
         current_subsection_key = st.session_state.get('selected_subsection', None)
         
+        # Auto-expand parent section if a subsection is selected
+        if current_section_key in ["uat_batch_status", "prd_batch_status"]:
+            st.session_state.expanded_sections.add("batch_status")
+        elif current_section_key in ["prd_online_exceptions", "prd_batch_exceptions", "prd_batch_runtime", "uat_online_exceptions", "uat_batch_exceptions", "uat_batch_runtime"]:
+            st.session_state.expanded_sections.add("daily_exceptions")
+        
         selected_section = current_section_key
         selected_subsection = current_subsection_key
         
@@ -1543,6 +1654,7 @@ class MonitoringDashboard:
             {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True, "color": "#f44336", "active_color": "#d32f2f"},
             {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2"},
             {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True, "color": "#ff9800", "active_color": "#f57c00"},
+            {"key": "batch_status", "icon": "⚙️", "name": "Batch Status", "has_subsections": True, "color": "#795548", "active_color": "#5d4037"},
             {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True, "color": "#9c27b0", "active_color": "#7b1fa2"},
             {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Other Critical Processes", "has_subsections": True, "color": "#008b8b", "active_color": "#006064"}
         ]
@@ -1595,16 +1707,34 @@ class MonitoringDashboard:
                     else:
                         # Section is collapsed - expand it and select it
                         if prev_section != section_key:
-                            # Clear all section-related state when switching sections
-                            for key in list(st.session_state.keys()):
-                                if key.startswith(('selected_', 'current_', 'clicked_', 'data_', 'df_')):
-                                    del st.session_state[key]
+                            # Check if prev_section is a subsection of this section
+                            is_subsection = False
+                            if section_key == "batch_status" and prev_section in ["uat_batch_status", "prd_batch_status"]:
+                                is_subsection = True
+                            elif section_key == "daily_exceptions" and prev_section in ["prd_online_exceptions", "prd_batch_exceptions", "prd_batch_runtime", "uat_online_exceptions", "uat_batch_exceptions", "uat_batch_runtime"]:
+                                is_subsection = True
+                            
+                            if not is_subsection:
+                                # Clear all section-related state when switching sections
+                                for key in list(st.session_state.keys()):
+                                    if key.startswith(('selected_', 'current_', 'clicked_', 'data_', 'df_')):
+                                        del st.session_state[key]
                         
                         # Collapse all other sections and expand this one
                         st.session_state.expanded_sections.clear()
                         st.session_state.expanded_sections.add(section_key)
-                        st.session_state.selected_section = section_key
-                        st.session_state.selected_subsection = None
+                        
+                        # Only set selected_section to main section if not currently on a valid subsection
+                        current_section = st.session_state.get('selected_section', None)
+                        if section_key == "batch_status" and current_section in ["uat_batch_status", "prd_batch_status"]:
+                            # Keep the subsection selected
+                            pass
+                        elif section_key == "daily_exceptions" and current_section in ["prd_online_exceptions", "prd_batch_exceptions", "prd_batch_runtime", "uat_online_exceptions", "uat_batch_exceptions", "uat_batch_runtime"]:
+                            # Keep the subsection selected  
+                            pass
+                        else:
+                            st.session_state.selected_section = section_key
+                            st.session_state.selected_subsection = None
                     
                     st.rerun()
                 
@@ -1906,6 +2036,52 @@ class MonitoringDashboard:
                         
                         st.sidebar.markdown('</div>', unsafe_allow_html=True)
                     
+                    elif section_key == "batch_status":
+                        # Batch Status subsections
+                        st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
+                        
+                        # Define the batch status subsections
+                        batch_sections = [
+                            {"key": "uat_batch_status", "icon": "🧪", "name": "UAT"},
+                            {"key": "prd_batch_status", "icon": "🏭", "name": "Production"}
+                        ]
+                        
+                        # Hierarchical subsection buttons with tree symbols
+                        for i, batch_section in enumerate(batch_sections):
+                            batch_key = batch_section["key"]
+                            batch_icon = batch_section["icon"]
+                            batch_name = batch_section["name"]
+                            
+                            # Use tree symbols for hierarchy (last item gets └─, others get ├─)
+                            tree_symbol = "└─" if i == len(batch_sections) - 1 else "├─"
+                            
+                            # Check if this is the currently selected dashboard
+                            is_active = (st.session_state.get('selected_section') == batch_key)
+                            
+                            # Add active styling if selected
+                            if is_active:
+                                st.sidebar.markdown('<div data-active="true" style="background-color: #e3f2fd; border-radius: 4px; margin: 1px 0;">', unsafe_allow_html=True)
+                            
+                            if st.sidebar.button(f"　{tree_symbol} {batch_icon} {batch_name}", 
+                                               key=f"batch_{batch_key}",
+                                               help=f"Click to analyze {batch_name} Batch Status",
+                                               use_container_width=True,
+                                               type="secondary"):
+                                # Clear all data state when selecting a new subsection
+                                for key in list(st.session_state.keys()):
+                                    if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
+                                        del st.session_state[key]
+                                
+                                st.session_state.selected_section = batch_key
+                                st.session_state.selected_subsection = None
+                                st.rerun()
+                            
+                            # Close active div if it was opened
+                            if is_active:
+                                st.sidebar.markdown('</div>', unsafe_allow_html=True)
+                        
+                        st.sidebar.markdown('</div>', unsafe_allow_html=True)
+                    
                     st.sidebar.markdown('</div>', unsafe_allow_html=True)
             else:
                 # Section without subsections - just a clickable button with color coding
@@ -1977,7 +2153,10 @@ class MonitoringDashboard:
                 "prd_batch_runtime": "⏱️ PRD Batch Runtime",
                 "uat_online_exceptions": "🧪 UAT Online Exceptions",
                 "uat_batch_exceptions": "🔬 UAT Batch Exceptions",
-                "uat_batch_runtime": "⏰ UAT Batch Runtime"
+                "uat_batch_runtime": "⏰ UAT Batch Runtime",
+                "batch_status": "⚙️ Batch Status",
+                "uat_batch_status": "🧪 UAT Batch Status",
+                "prd_batch_status": "🏭 Production Batch Status"
             }
             section_display = section_map.get(current_section_key, "📊 Benefit Issuance")
             # No longer needed with button-based navigation
@@ -2158,13 +2337,13 @@ class MonitoringDashboard:
             st.error("""
             **🔴 High Priority Monitoring**
             
-            📋 **System Summary** - Complete overview with status cards
+            ⚙️ **Batch Status** - UAT & Production batch job monitoring
             
-            👥 **User Impact** - Daily user impact status & tracking
+            � **Correspondence** - Tango monitoring & uploads
+            
+            �👥 **User Impact** - Daily user impact status & tracking
             
             🚨 **100 Error Counts** - Session timeouts & system errors
-            
-            📧 **Correspondence** - Tango monitoring & uploads
             """)
             
         with col2:
@@ -2409,6 +2588,18 @@ class MonitoringDashboard:
                     "Performance validation",
                     "Pre-production timing analysis"
                 ]
+            },
+            "batch_status": {
+                "title": "Batch Status",
+                "icon": "⚙️",
+                "color": "#795548",
+                "description": "Monitor batch job status and performance across UAT and Production environments.",
+                "features": [
+                    "UAT Environment monitoring",
+                    "Production Environment tracking", 
+                    "Previous working day data",
+                    "Failed batch job analysis"
+                ]
             }
         }
         
@@ -2531,7 +2722,7 @@ class MonitoringDashboard:
             """)
         
         # Professional call to action
-        st.markdown("""
+        st.markdown(f"""
         <div style="
             background: linear-gradient(135deg, #1976d2 0%, #1565c0 50%, #0d47a1 100%);
             color: white;
@@ -2554,7 +2745,7 @@ class MonitoringDashboard:
             ">🚀</div>
             <h3 style="margin: 0 0 15px 0; font-weight: 600; font-size: 1.5rem;">Ready to Get Started?</h3>
             <p style="margin: 0 0 20px 0; font-size: 1.1rem; opacity: 0.9;">
-                Click <strong>"🚨 100 Error Counts"</strong> in the sidebar to begin exploring your data!
+                Click <strong>"{info['icon']} {info['title']}"</strong> in the sidebar to begin exploring your data!
             </p>
             <div style="
                 background: rgba(255,255,255,0.1);
@@ -2614,11 +2805,109 @@ class MonitoringDashboard:
                 "weekly": "Weekly User Impact Dashboard",
                 "monthly": "Monthly User Impact Dashboard",
                 "yearly": "Yearly User Impact Dashboard"
+            },
+            "mass_update": {
+                "daily": "🔄 Mass Update Dashboard",
+                "weekly": "🔄 Mass Update Dashboard",
+                "monthly": "🔄 Mass Update Dashboard",
+                "yearly": "🔄 Mass Update Dashboard"
+            },
+            "interfaces": {
+                "daily": "🔗 Interfaces Dashboard",
+                "weekly": "🔗 Interfaces Dashboard",
+                "monthly": "🔗 Interfaces Dashboard",
+                "yearly": "🔗 Interfaces Dashboard"
+            },
+            "hung_threads": {
+                "daily": "🧵 Hung Threads Dashboard",
+                "weekly": "🧵 Hung Threads Dashboard",
+                "monthly": "🧵 Hung Threads Dashboard",
+                "yearly": "🧵 Hung Threads Dashboard"
+            },
+            "extra_batch_connections": {
+                "daily": "🔌 Extra Batch Connections Dashboard",
+                "weekly": "🔌 Extra Batch Connections Dashboard",
+                "monthly": "🔌 Extra Batch Connections Dashboard",
+                "yearly": "🔌 Extra Batch Connections Dashboard"
+            },
+            "data_warehouse": {
+                "daily": "🏢 Data Warehouse Dashboard",
+                "weekly": "🏢 Data Warehouse Dashboard",
+                "monthly": "🏢 Data Warehouse Dashboard",
+                "yearly": "🏢 Data Warehouse Dashboard"
+            },
+            "consolidated_inquiry": {
+                "daily": "🔍 Consolidated Inquiry Dashboard",
+                "weekly": "🔍 Consolidated Inquiry Dashboard",
+                "monthly": "🔍 Consolidated Inquiry Dashboard",
+                "yearly": "🔍 Consolidated Inquiry Dashboard"
             }
         }
         
+        # Get title and render colored header for all sections
         title = section_titles.get(selected_section, {}).get(selected_period, f"{selected_section.replace('_', ' ').title()} Dashboard" if selected_section else "Dashboard")
-        st.title(title)
+        
+        # Section color mapping
+        section_colors = {
+            "benefit_issuance": "#2196f3",
+            "correspondence_tango": "#4caf50", 
+            "error_counts": "#f44336",
+            "user_impact": "#ff9800",
+            "mass_update": "#9c27b0",
+            "interfaces": "#607d8b", 
+            "hung_threads": "#795548",
+            "extra_batch_connections": "#ff5722",
+            "data_warehouse": "#3f51b5",
+            "consolidated_inquiry": "#4caf50",
+            "batch_status": "#795548",
+            "uat_batch_status": "#FF7043",
+            "prd_batch_status": "#1976D2",
+            "summary": "#17a2b8"
+        }
+        
+        # Section icon mapping
+        section_icons = {
+            "benefit_issuance": "📈",
+            "correspondence_tango": "📧", 
+            "error_counts": "🚨",
+            "user_impact": "👥",
+            "mass_update": "🔄",
+            "interfaces": "🔗", 
+            "hung_threads": "🧵",
+            "extra_batch_connections": "⚡",
+            "data_warehouse": "🏢",
+            "consolidated_inquiry": "🔍",
+            "batch_status": "⚙️",
+            "uat_batch_status": "🧪",
+            "prd_batch_status": "🏭",
+            "summary": "📋"
+        }
+        
+        section_color = section_colors.get(selected_section, "#1f4e79")
+        section_icon = section_icons.get(selected_section, "📊")
+        
+        # Render colored header for all sections
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, {section_color} 0%, {section_color}CC 100%);
+            color: white;
+            padding: 25px 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        ">
+            <div style="display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 2.5rem; margin-right: 15px;">{section_icon}</span>
+                <h1 style="
+                    margin: 0;
+                    font-size: 2rem;
+                    font-weight: 700;
+                    color: white !important;
+                ">{title}</h1>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         # Add home button on data pages
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -2652,7 +2941,10 @@ class MonitoringDashboard:
             "prd_batch_runtime": self.render_prd_batch_runtime_content,
             "uat_online_exceptions": self.render_uat_online_exceptions_content,
             "uat_batch_exceptions": self.render_uat_batch_exceptions_content,
-            "uat_batch_runtime": self.render_uat_batch_runtime_content
+            "uat_batch_runtime": self.render_uat_batch_runtime_content,
+            "batch_status": self.render_batch_status_content,
+            "uat_batch_status": self.render_uat_batch_status_content,
+            "prd_batch_status": self.render_prd_batch_status_content
         }
         
         handler = section_handlers.get(selected_section)
@@ -2709,6 +3001,12 @@ class MonitoringDashboard:
                 "description": "FAP, FIP, SDA processing status"
             },
             {
+                "key": "batch_status",
+                "name": "Batch Status",
+                "icon": "⚙️",
+                "description": "UAT & Production batch job monitoring"
+            },
+            {
                 "key": "daily_exceptions",
                 "name": "Daily Exceptions",
                 "icon": "⚠️",
@@ -2730,103 +3028,83 @@ class MonitoringDashboard:
         st.markdown(f"**Data as of:** {recent_date}")
         st.markdown("")  # Add spacing
         
-        # Create status cards in a properly aligned 2x3 grid layout
-        # First row (3 cards)
-        col1, col2, col3 = st.columns(3, gap="medium")
+        # Create status cards in properly aligned rows of 3 cards each
+        # Calculate number of rows needed (7 sections = 3 + 3 + 1)
+        total_sections = len(dashboard_sections)
+        sections_per_row = 3
         
-        # First row cards
-        first_row_sections = dashboard_sections[:3]
-        columns = [col1, col2, col3]
+        # Process sections in batches of 3
+        for row_idx in range(0, total_sections, sections_per_row):
+            row_sections = dashboard_sections[row_idx:row_idx + sections_per_row]
+            
+            # Create columns for this row
+            if len(row_sections) == 3:
+                col1, col2, col3 = st.columns(3, gap="medium")
+                row_columns = [col1, col2, col3]
+            elif len(row_sections) == 2:
+                col1, col2, col3 = st.columns([1, 1, 1], gap="medium") 
+                row_columns = [col1, col2, col3]
+            else:  # 1 section
+                col1, col2, col3 = st.columns([1, 1, 1], gap="medium")
+                row_columns = [col2]  # Center the single card
         
-        for i, section in enumerate(first_row_sections):
-            with columns[i]:
-                # Get status for this section
-                status, status_color, status_text = self.get_section_status(section["key"])
+            # Render cards for this row
+            for i, section in enumerate(row_sections):
+                with row_columns[i]:
+                    try:
+                        # Get status for this section
+                        status, status_color, status_text = self.get_section_status(section["key"])
+                        
+                        # Create status card
+                        self.render_status_card(
+                            section["name"],
+                            section["icon"], 
+                            section["description"],
+                            status,
+                            status_color,
+                            status_text
+                        )
+                    except Exception as e:
+                        st.error(f"Error loading {section['name']}: {str(e)}")
+                        # Create fallback status card
+                        self.render_status_card(
+                            section["name"],
+                            section["icon"], 
+                            section["description"],
+                            "warning",
+                            "#ffc107",
+                            "Status unavailable"
+                        )
                 
-                # Create status card
-                self.render_status_card(
-                    section["name"],
-                    section["icon"], 
-                    section["description"],
-                    status,
-                    status_color,
-                    status_text
-                )
-                
-                # Add navigation button below each card
-                if st.button(
-                    f"📊 View {section['name']} Dashboard", 
-                    key=f"nav_to_{section['key']}", 
-                    help=f"Navigate to {section['name']} section",
-                    use_container_width=True
-                ):
-                    # Clear data state when navigating to a new section
-                    for key in list(st.session_state.keys()):
-                        if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
-                            del st.session_state[key]
                     
-                    # Initialize expanded_sections if not exists
-                    if 'expanded_sections' not in st.session_state:
-                        st.session_state.expanded_sections = set()
-                    
-                    # Auto-expand the section in navigation (all sections in System Summary have subsections)
-                    # Clear other expanded sections and expand the target section
-                    st.session_state.expanded_sections.clear()
-                    st.session_state.expanded_sections.add(section["key"])
-                    
-                    st.session_state.selected_section = section["key"]
-                    st.session_state.selected_subsection = None
-                    st.rerun()
-        
-        # Add spacing between rows
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Second row (3 cards) 
-        col4, col5, col6 = st.columns(3, gap="medium")
-        
-        # Second row cards
-        second_row_sections = dashboard_sections[3:]
-        columns = [col4, col5, col6]
-        
-        for i, section in enumerate(second_row_sections):
-            with columns[i]:
-                # Get status for this section
-                status, status_color, status_text = self.get_section_status(section["key"])
-                
-                # Create status card
-                self.render_status_card(
-                    section["name"],
-                    section["icon"], 
-                    section["description"],
-                    status,
-                    status_color,
-                    status_text
-                )
-                
-                # Add navigation button below each card
-                if st.button(
-                    f"📊 View {section['name']} Dashboard", 
-                    key=f"nav_to_{section['key']}", 
-                    help=f"Navigate to {section['name']} section",
-                    use_container_width=True
-                ):
-                    # Clear data state when navigating to a new section
-                    for key in list(st.session_state.keys()):
-                        if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
-                            del st.session_state[key]
-                    
-                    # Initialize expanded_sections if not exists
-                    if 'expanded_sections' not in st.session_state:
-                        st.session_state.expanded_sections = set()
-                    
-                    # Auto-expand the section in navigation (all sections in System Summary have subsections)
-                    # Clear other expanded sections and expand the target section
-                    st.session_state.expanded_sections.clear()
-                    st.session_state.expanded_sections.add(section["key"])
-                    
-                    st.session_state.selected_section = section["key"]
-                    st.session_state.selected_subsection = None
-                    st.rerun()
+                    # Add navigation button below each card
+                    if st.button(
+                        f"📊 View {section['name']} Dashboard", 
+                        key=f"nav_to_{section['key']}", 
+                        help=f"Navigate to {section['name']} section",
+                        use_container_width=True
+                    ):
+                        # Clear data state when navigating to a new section
+                        for key in list(st.session_state.keys()):
+                            if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
+                                del st.session_state[key]
+                        
+                        # Initialize expanded_sections if not exists
+                        if 'expanded_sections' not in st.session_state:
+                            st.session_state.expanded_sections = set()
+                        
+                        # Auto-expand the section in navigation (all sections in System Summary have subsections)
+                        # Clear other expanded sections and expand the target section
+                        st.session_state.expanded_sections.clear()
+                        st.session_state.expanded_sections.add(section["key"])
+                        
+                        st.session_state.selected_section = section["key"]
+                        st.session_state.selected_subsection = None
+                        st.rerun()
+            
+            # Add spacing between rows (but not after the last row)
+            if row_idx + sections_per_row < total_sections:
+                st.markdown("<br>", unsafe_allow_html=True)
         
         # Add final spacing
         st.markdown("<br>", unsafe_allow_html=True)
@@ -2878,21 +3156,27 @@ class MonitoringDashboard:
     def get_section_status(self, section_key: str):
         """Get status for a dashboard section. Returns (status, color, text)."""
         
-        if section_key == "error_counts":
-            return self.get_error_counts_status()
-        elif section_key == "user_impact":
-            return self.get_user_impact_status()
-        elif section_key == "correspondence_tango":
-            return self.get_correspondence_status()
-        elif section_key == "benefit_issuance":
-            return self.get_benefit_issuance_status()
-        elif section_key == "daily_exceptions":
-            return self.get_daily_exceptions_status()
-        elif section_key == "miscellaneous_bridges":
-            return self.get_other_critical_processes_status()
-        else:
-            # Fallback for any unknown sections
-            return ("normal", "#6c757d", "Status monitoring available")
+        try:
+            if section_key == "error_counts":
+                return self.get_error_counts_status()
+            elif section_key == "user_impact":
+                return self.get_user_impact_status()
+            elif section_key == "correspondence_tango":
+                return self.get_correspondence_status()
+            elif section_key == "benefit_issuance":
+                return self.get_benefit_issuance_status()
+            elif section_key == "daily_exceptions":
+                return self.get_daily_exceptions_status()
+            elif section_key == "miscellaneous_bridges":
+                return self.get_other_critical_processes_status()
+            elif section_key == "batch_status":
+                return self.get_batch_status_summary()
+            else:
+                # Fallback for any unknown sections
+                return ("normal", "#6c757d", "Status monitoring available")
+        except Exception as e:
+            # Return error status if any exception occurs
+            return ("warning", "#ffc107", f"Status check failed: {str(e)}")
     
     def get_error_counts_status(self):
         """Get status for 100 Error Counts based on real data and thresholds."""
@@ -3095,6 +3379,55 @@ class MonitoringDashboard:
                 
         except Exception as e:
             return ("warning", "#ffc107", "Data not available")
+
+    def get_batch_status_summary(self):
+        """Get status summary for Batch Status based on UAT and Production failed jobs."""
+        try:
+            from pathlib import Path
+            
+            # Check Production batch status first (higher priority)
+            prd_path = Path(__file__).parent / "Monitoring Data Files" / "Batch Status" / "Production.xlsx"
+            uat_path = Path(__file__).parent / "Monitoring Data Files" / "Batch Status" / "UAT.xlsx"
+            
+            prd_failed_jobs = 0
+            uat_failed_jobs = 0
+            
+            # Check Production data
+            if prd_path.exists():
+                try:
+                    from src.data_loader import ExcelDataLoader
+                    loader = ExcelDataLoader(str(prd_path))
+                    prd_df = loader.load_data()
+                    
+                    if not prd_df.empty:
+                        filtered_prd = self.filter_batch_status_data(prd_df)
+                        prd_failed_jobs = len(filtered_prd)
+                except:
+                    pass
+            
+            # Check UAT data
+            if uat_path.exists():
+                try:
+                    from src.data_loader import ExcelDataLoader
+                    loader = ExcelDataLoader(str(uat_path))
+                    uat_df = loader.load_data()
+                    
+                    if not uat_df.empty:
+                        filtered_uat = self.filter_batch_status_data(uat_df)
+                        uat_failed_jobs = len(filtered_uat)
+                except:
+                    pass
+            
+            # Apply priority logic: Production failures take precedence
+            if prd_failed_jobs > 0:
+                return ("critical", "#dc3545", f"{prd_failed_jobs} Failed Jobs in PRD")
+            elif uat_failed_jobs > 0:
+                return ("warning", "#ffc107", f"{uat_failed_jobs} Failed Jobs in UAT")
+            else:
+                return ("normal", "#28a745", "No Failed Jobs")
+                
+        except Exception as e:
+            return ("warning", "#ffc107", f"Status check failed: {str(e)}")
     
     def get_most_recent_weekday_data(self, df):
         """Get the most recent weekday data from the dataframe."""
@@ -3346,7 +3679,10 @@ class MonitoringDashboard:
         
         if not date_columns:
             # If no date column found, return the last row as fallback
-            return df.iloc[-1] if len(df) > 0 else None
+            if len(df) > 0:
+                return df.iloc[-1]
+            else:
+                return None
         
         # Convert date column to datetime for comparison
         date_col = date_columns[0]
@@ -3356,7 +3692,10 @@ class MonitoringDashboard:
             df_copy = df_copy.dropna(subset=[date_col])
             
             if df_copy.empty:
-                return df.iloc[-1] if len(df) > 0 else None
+                if len(df) > 0:
+                    return df.iloc[-1]
+                else:
+                    return None
             
             # Convert target_date to just the date part for comparison
             if isinstance(target_date, str):
@@ -3375,7 +3714,10 @@ class MonitoringDashboard:
                 
         except Exception:
             # If date parsing fails, return the last row
-            return df.iloc[-1] if len(df) > 0 else None
+            if len(df) > 0:
+                return df.iloc[-1]
+            else:
+                return None
     
     def render_status_card(self, title: str, icon: str, description: str, status: str, color: str, status_text: str):
         """Render a status card with the given parameters."""
@@ -4451,35 +4793,139 @@ class MonitoringDashboard:
     
     def render_mass_update_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Mass Update specific content."""
-        self.render_generic_section_content(df, selected_period, "Mass Update", "🔄")
+        # Check if user wants to view data
+        if st.session_state.get('show_mass_update_data', False):
+            if df is None or df.empty:
+                st.info("📋 No Mass Update data found. This could indicate:")
+                st.markdown("""
+                - No Excel files in the Mass Update folder
+                - Files are empty or in an unsupported format
+                - No data matching the selected date range
+                
+                **Next Steps:**
+                - Check the Monitoring Data Files folder structure
+                - Verify Excel files contain data
+                - Try adjusting the date range filter
+                """)
+                
+                if st.button("← Back to Mass Update Overview", key="back_to_mass_update_home"):
+                    st.session_state.show_mass_update_data = False
+                    st.rerun()
+                return
+            
+            self.render_generic_section_content(df, selected_period, "Mass Update", "🔄")
+            
+            if st.button("← Back to Mass Update Overview", key="back_to_mass_update_home2"):
+                st.session_state.show_mass_update_data = False
+                st.rerun()
+        else:
+            # Show section home page with information
+            self.render_section_home_page("mass_update")
+            
+            # Add button to view data
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("📊 View Mass Update Data", key="view_mass_update_data", use_container_width=True, type="primary"):
+                    st.session_state.show_mass_update_data = True
+                    st.rerun()
     
     def render_interfaces_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Interfaces specific content."""
-        self.render_generic_section_content(df, selected_period, "Interfaces", "🔗")
+        # Check if user wants to view data
+        if st.session_state.get('show_interfaces_data', False):
+            if df is None or df.empty:
+                st.info("📋 No Interfaces data found. This could indicate:")
+                st.markdown("""
+                - No Excel files in the Interfaces folder
+                - Files are empty or in an unsupported format
+                - No data matching the selected date range
+                
+                **Next Steps:**
+                - Check the Monitoring Data Files folder structure
+                - Verify Excel files contain data
+                - Try adjusting the date range filter
+                """)
+                
+                if st.button("← Back to Interfaces Overview", key="back_to_interfaces_home"):
+                    st.session_state.show_interfaces_data = False
+                    st.rerun()
+                return
+            
+            self.render_generic_section_content(df, selected_period, "Interfaces", "🔗")
+            
+            if st.button("← Back to Interfaces Overview", key="back_to_interfaces_home2"):
+                st.session_state.show_interfaces_data = False
+                st.rerun()
+        else:
+            # Show section home page with information
+            self.render_section_home_page("interfaces")
+            
+            # Add button to view data
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("📊 View Interfaces Data", key="view_interfaces_data", use_container_width=True, type="primary"):
+                    st.session_state.show_interfaces_data = True
+                    st.rerun()
     
     def render_extra_batch_connections_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Extra Batch Connections specific content."""
-        
-        # Filters in main area with expander
-        with st.expander("🔍 **Data Filters**", expanded=False):
-            filters = self.create_inline_filters(df)
-        
-        # Apply filters
-        filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Sort by date columns (latest to oldest)
-        filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
-        
-        # Apply date formatting to filtered data
-        filtered_df = format_dataframe_dates(filtered_df)
-        
-        # Data Table - Main Focus with highlighting
-        st.header("📋 Extra Connections Created Data")
-        self.render_extra_batch_connections_table(filtered_df, "Extra Connections Created Data")
-        
-        # Key Metrics - Below Data Table
-        st.header(f"📊 Key Metrics")
-        self.metrics_component.auto_metrics(filtered_df)
+        # Check if user wants to view data
+        if st.session_state.get('show_extra_batch_data', False):
+            if df is None or df.empty:
+                st.info("📋 No Extra Batch Connections data found. This could indicate:")
+                st.markdown("""
+                - No Excel files in the Extra Batch Connections folder
+                - Files are empty or in an unsupported format
+                - No data matching the selected date range
+                
+                **Next Steps:**
+                - Check the Monitoring Data Files folder structure
+                - Verify Excel files contain data
+                - Try adjusting the date range filter
+                """)
+                
+                if st.button("← Back to Extra Batch Connections Overview", key="back_to_extra_batch_home"):
+                    st.session_state.show_extra_batch_data = False
+                    st.rerun()
+                return
+            
+            # Filters in main area with expander
+            with st.expander("🔍 **Data Filters**", expanded=False):
+                filters = self.create_inline_filters(df)
+            
+            # Apply filters
+            filtered_df = self.filter_component.apply_filters(df, filters)
+            
+            # Sort by date columns (latest to oldest)
+            filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
+            
+            # Apply date formatting to filtered data
+            filtered_df = format_dataframe_dates(filtered_df)
+            
+            # Data Table - Main Focus with highlighting
+            st.header("📋 Extra Connections Created Data")
+            self.render_extra_batch_connections_table(filtered_df, "Extra Connections Created Data")
+            
+            # Key Metrics - Below Data Table
+            st.header(f"📊 Key Metrics")
+            self.metrics_component.auto_metrics(filtered_df)
+            
+            if st.button("← Back to Extra Batch Connections Overview", key="back_to_extra_batch_home2"):
+                st.session_state.show_extra_batch_data = False
+                st.rerun()
+        else:
+            # Show section home page with information
+            self.render_section_home_page("extra_batch_connections")
+            
+            # Add button to view data
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("📊 View Extra Batch Connections Data", key="view_extra_batch_data", use_container_width=True, type="primary"):
+                    st.session_state.show_extra_batch_data = True
+                    st.rerun()
 
     def render_extra_batch_connections_table(self, df: pd.DataFrame, title: str) -> None:
         """Render extra batch connections table with highlighting for # Connections >= 7."""
@@ -4637,10 +5083,61 @@ class MonitoringDashboard:
     
     def render_hung_threads_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Hung Threads specific content."""
-        self.render_generic_section_content(df, selected_period, "Hung Threads", "🧵")
+        # Check if user wants to view data
+        if st.session_state.get('show_hung_threads_data', False):
+            if df is None or df.empty:
+                st.info("📋 No Hung Threads data found. This could indicate:")
+                st.markdown("""
+                - No Excel files in the Hung Threads folder
+                - Files are empty or in an unsupported format
+                - No data matching the selected date range
+                - System is healthy with no hung threads (which is good!)
+                
+                **Next Steps:**
+                - Check the Monitoring Data Files folder structure
+                - Verify Excel files contain data
+                - Try adjusting the date range filter
+                """)
+                
+                if st.button("← Back to Hung Threads Overview", key="back_to_hung_threads_home"):
+                    st.session_state.show_hung_threads_data = False
+                    st.rerun()
+                return
+            
+            self.render_generic_section_content(df, selected_period, "Hung Threads", "🧵")
+            
+            if st.button("← Back to Hung Threads Overview", key="back_to_hung_threads_home2"):
+                st.session_state.show_hung_threads_data = False
+                st.rerun()
+        else:
+            # Show section home page with information
+            self.render_section_home_page("hung_threads")
+            
+            # Add button to view data
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("📊 View Hung Threads Data", key="view_hung_threads_data", use_container_width=True, type="primary"):
+                    st.session_state.show_hung_threads_data = True
+                    st.rerun()
 
     def render_data_warehouse_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Data Warehouse specific content."""
+        if df is None or df.empty:
+            st.markdown("## 🏢 Data Warehouse Overview")
+            st.info("📋 No Data Warehouse data found. This could indicate:")
+            st.markdown("""
+            - No Excel files in the Data Warehouse folder
+            - Files are empty or in an unsupported format
+            - No data matching the selected date range
+            
+            **Next Steps:**
+            - Check the Monitoring Data Files folder structure
+            - Verify Excel files contain data
+            - Try adjusting the date range filter
+            """)
+            return
+        
         self.render_generic_section_content(df, selected_period, "Data Warehouse", "🏢")
 
     def render_consolidated_inquiry_content(self, df: pd.DataFrame, selected_period: str) -> None:
@@ -5566,10 +6063,19 @@ class MonitoringDashboard:
                 return
             
             # Check if we should load data (either has subsection OR is a section that loads data directly)
-            sections_with_direct_data = ['extra_batch_connections', 'mass_update', 'interfaces', 'hung_threads', 
-                                       'prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
-                                       'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime']  # Sections that load data without subsections
-            should_load_data = selected_subsection or (selected_section in sections_with_direct_data)
+            sections_with_direct_data = ['prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
+                                       'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime',
+                                       'uat_batch_status', 'prd_batch_status']  # Sections that load data without subsections
+            # Check if we need to load data for sections that have data viewing enabled
+            data_viewing_sections = ['mass_update', 'interfaces', 'hung_threads', 'extra_batch_connections']
+            section_wants_data = any([
+                st.session_state.get('show_mass_update_data', False) and selected_section == 'mass_update',
+                st.session_state.get('show_interfaces_data', False) and selected_section == 'interfaces', 
+                st.session_state.get('show_hung_threads_data', False) and selected_section == 'hung_threads',
+                st.session_state.get('show_extra_batch_data', False) and selected_section == 'extra_batch_connections'
+            ])
+            
+            should_load_data = selected_subsection or (selected_section in sections_with_direct_data) or section_wants_data
             
             if should_load_data:
                 try:
@@ -5592,7 +6098,10 @@ class MonitoringDashboard:
                         else:
                             st.error("Failed to load the Excel file. Please check the file format.")
                     else:
-                        st.error(f"No Excel file found for: {selected_section} - {selected_subsection}")
+                        # No file found - call render function with empty dataframe for graceful handling
+                        import pandas as pd
+                        empty_df = pd.DataFrame()
+                        self.render_main_content_with_data(empty_df, nav_result)
                 except Exception as e:
                     st.error(f"Error loading data: {str(e)}")
             else:
@@ -5750,6 +6259,192 @@ class MonitoringDashboard:
         with col4:
             env_status = "Critical" if environment == "PRD" and len(df) > 10 else "Monitoring"
             st.metric(f"{environment} Status", env_status)
+
+
+    def get_previous_working_day(self) -> datetime:
+        """Calculate the previous working day (skipping weekends)."""
+        today = datetime.now()
+        
+        # Get previous day
+        previous_day = today - timedelta(days=1)
+        
+        # If previous day is Saturday (5) or Sunday (6), go back further
+        while previous_day.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            previous_day = previous_day - timedelta(days=1)
+        
+        return previous_day
+
+    def format_batch_timestamp(self, value):
+        """Format timestamp values to DD-MON-YYYY format for batch status."""
+        if pd.isna(value) or value is None or str(value).strip() == '' or str(value) == 'nan':
+            return value
+            
+        try:
+            value_str = str(value).strip()
+            
+            # Direct regex match for YYYY-MM-DD HH:MM:SS
+            timestamp_match = re.match(r'(\d{4})-(\d{1,2})-(\d{1,2}) \d{1,2}:\d{1,2}:\d{1,2}', value_str)
+            if timestamp_match:
+                year, month, day = timestamp_match.groups()
+                month_names = ['', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+                             'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+                month_abbr = month_names[int(month)]
+                return f"{int(day):02d}-{month_abbr}-{year}"
+            
+            # If it's already in DD-MON-YYYY format, keep it
+            if re.match(r'\d{1,2}-[A-Z]{3}-\d{4}', value_str):
+                return value_str
+                
+            # Try pandas datetime conversion as fallback
+            if hasattr(value, 'strftime'):
+                return value.strftime('%d-%b-%Y').upper()
+                
+            return value_str
+        except:
+            return str(value)
+
+    def filter_batch_status_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Filter batch status data to show only previous working day records."""
+        if df is None or df.empty:
+            return df
+        
+        # Use the same business day logic as the system summary
+        from datetime import datetime, timedelta
+        yesterday = datetime.now() - timedelta(days=1)
+        
+        # If yesterday was a weekday, use it; otherwise find the previous weekday
+        if yesterday.weekday() < 5:  # Monday=0, Friday=4
+            previous_working_day = yesterday
+        else:
+            # Yesterday was weekend, find the previous Friday
+            days_back = yesterday.weekday() - 4  # 4 is Friday
+            previous_working_day = yesterday - timedelta(days=days_back)
+        
+        # Look for date columns in the dataframe
+        date_columns = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in ['date', 'day', 'time', 'created', 'updated']):
+                date_columns.append(col)
+        
+        if not date_columns:
+            # If no date columns found, return the data as is
+            return df
+        
+        # Use the first date column found
+        date_col = date_columns[0]
+        
+        try:
+            # Convert to datetime for comparison
+            df_copy = df.copy()
+            df_copy[date_col] = pd.to_datetime(df_copy[date_col], errors='coerce')
+            
+            # Filter for the previous working day
+            previous_working_day_start = previous_working_day.replace(hour=0, minute=0, second=0, microsecond=0)
+            previous_working_day_end = previous_working_day.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            filtered_df = df_copy[
+                (df_copy[date_col] >= previous_working_day_start) & 
+                (df_copy[date_col] <= previous_working_day_end)
+            ]
+            
+            return filtered_df.dropna(subset=[date_col])
+        
+        except Exception:
+            # If date filtering fails, return original data
+            return df
+
+    def render_batch_status_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Batch Status main landing page."""
+        self.render_section_home_page("batch_status")
+
+    def render_uat_batch_status_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render UAT Batch Status specific content."""
+        self.render_batch_status_environment("uat_batch_status", "UAT Batch Status", "🧪", df)
+    
+    def render_prd_batch_status_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Production Batch Status specific content."""  
+        self.render_batch_status_environment("prd_batch_status", "Production Batch Status", "🏭", df)
+
+    def render_batch_status_environment(self, section: str, title: str, icon: str, df: pd.DataFrame) -> None:
+        """Render batch status content for a specific environment (UAT or Production)."""
+        
+        # Get formatted date for display  
+        formatted_date = self.get_most_recent_weekday_date()
+        
+        # Add date info below main header (no duplicate header)
+        st.markdown(f"**📅 Data as of:** {formatted_date}")
+        st.markdown("---")
+        
+        # Filter data for previous working day and display immediately
+        if df is not None and not df.empty:
+            filtered_df = self.filter_batch_status_data(df)
+            
+            if filtered_df.empty:
+                # Summary line for no failed jobs
+                st.markdown("**📊 Failed Jobs: 0**")
+                
+                # No failed batch jobs message
+                st.success("✅ **There are no failed batch jobs** for the previous working day.")
+            else:
+                # Summary line for failed jobs count
+                st.markdown(f"**📊 Failed Jobs: {len(filtered_df)}**")
+                
+                # Display the data table
+                st.markdown("## 📋 Batch Job Details")
+                
+                # Format and display the dataframe with proper timestamp conversion
+                df_display = filtered_df.copy()
+                
+                # Convert ALL columns to proper display format
+                for col in df_display.columns:
+                    df_display[col] = df_display[col].apply(lambda x: self.format_batch_timestamp(x))
+                
+                # Don't use sort_dataframe_by_date as it converts dates back to timestamps
+                # Instead, just reverse the order if needed
+                df_display = df_display.iloc[::-1]
+                
+                st.dataframe(
+                    df_display,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Additional analysis
+                if len(df_display.columns) > 0:
+                    st.markdown("## 🔍 Quick Analysis")
+                    
+                    # Show analysis in columns
+                    analysis_cols = st.columns(2)
+                    with analysis_cols[0]:
+                        st.markdown("**Data Summary:**")
+                        st.write(f"- Total failed jobs: {len(filtered_df)}")
+                        st.write(f"- Data columns: {len(filtered_df.columns)}")
+                        st.write(f"- Environment: {title.split()[0]}")
+                        
+                    with analysis_cols[1]:
+                        st.markdown("**Recommended Actions:**")
+                        if len(filtered_df) > 10:
+                            st.write("🔴 High number of failures - Immediate attention required")
+                        elif len(filtered_df) > 5:
+                            st.write("🟡 Moderate failures - Investigation recommended")
+                        else:
+                            st.write("🟢 Low failure count - Monitor trends")
+        else:
+            # No data available
+            st.warning(f"⚠️ No batch status data available for {formatted_date}")
+            
+            # Show basic metrics even with no data
+            st.markdown("## 📊 Environment Status")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Data Status", "No Data")
+            with col2:
+                st.metric("Environment", title.split()[0])
+            with col3:
+                st.metric("Date Checked", formatted_date)
+            with col4:
+                st.metric("Status", "Unknown")
 
 
 def main():
