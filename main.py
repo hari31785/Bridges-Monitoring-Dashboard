@@ -602,7 +602,7 @@ class MonitoringDashboard:
             page_title=dashboard_config.get('title', 'Monitoring Dashboard'),
             page_icon="📊",
             layout=dashboard_config.get('page_layout', 'wide'),
-            initial_sidebar_state="expanded"
+            initial_sidebar_state="collapsed"
         )
     
     def auto_load_excel_file(self, section: str = "error_counts", period: str = "daily", subsection: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -1275,6 +1275,110 @@ class MonitoringDashboard:
         
         return []
 
+    def render_breadcrumb_navigation(self, selected_section: str = None, selected_subsection: str = None) -> None:
+        """Render breadcrumb navigation for better user orientation."""
+        if not selected_section or selected_section == 'summary':
+            # On home page - no breadcrumb needed
+            return
+            
+        # Create breadcrumb trail
+        breadcrumb_items = ["🏠 Home"]
+        
+        # Add section to breadcrumb
+        section_info = self.get_section_display_info(selected_section)
+        if section_info:
+            breadcrumb_items.append(f"{section_info['icon']} {section_info['name']}")
+        
+        # Add subsection if exists
+        if selected_subsection:
+            subsection_info = self.get_subsection_display_info(selected_section, selected_subsection)
+            if subsection_info:
+                breadcrumb_items.append(f"{subsection_info.get('icon', '📄')} {subsection_info['name']}")
+        
+        # Create clickable breadcrumb navigation
+        breadcrumb_html = '<div style="margin-bottom: 20px; padding: 10px; background-color: #f8f9fa; border-radius: 5px; border-left: 4px solid #17a2b8;">'
+        
+        for i, item in enumerate(breadcrumb_items):
+            if i == 0:  # Home link
+                breadcrumb_html += f'<a href="#" onclick="return false;" style="color: #17a2b8; text-decoration: none; font-weight: bold;">{item}</a>'
+            else:
+                breadcrumb_html += f' <span style="color: #6c757d; margin: 0 8px;">→</span> '
+                if i == len(breadcrumb_items) - 1:  # Current page (not clickable)
+                    breadcrumb_html += f'<span style="color: #333; font-weight: bold;">{item}</span>'
+                else:  # Intermediate links
+                    breadcrumb_html += f'<span style="color: #6c757d;">{item}</span>'
+        
+        breadcrumb_html += '</div>'
+        st.markdown(breadcrumb_html, unsafe_allow_html=True)
+        
+        # Add navigation buttons
+        if selected_section or selected_subsection:
+            col1, col2, col3, col4 = st.columns([1, 1, 1, 3])
+            with col1:
+                if st.button("← Back", key="breadcrumb_back", help="Go back to previous level"):
+                    # Define sections that auto-select subsections (single subsection sections)
+                    single_subsection_sections = ['error_counts', 'user_impact']
+                    # Define sections that are batch status subsections
+                    batch_subsections = ['uat_batch_status', 'prd_batch_status']
+                    
+                    if selected_section in batch_subsections:
+                        # For batch status subsections, go back to batch status selection
+                        st.session_state.selected_section = 'batch_status'
+                        st.session_state.selected_subsection = None
+                    elif selected_subsection and selected_section in single_subsection_sections:
+                        # For single subsection sections, go directly back to home
+                        st.session_state.selected_section = 'summary'
+                        st.session_state.selected_subsection = None
+                    elif selected_subsection:
+                        # Go back to section selection page
+                        st.session_state.selected_subsection = None
+                    elif selected_section:
+                        # Go back to home (summary)
+                        st.session_state.selected_section = 'summary'
+                        st.session_state.selected_subsection = None
+                    st.rerun()
+            
+            with col2:
+                if st.button("🏠 Home", key="breadcrumb_home", help="Return to home page"):
+                    # Return to summary home page
+                    st.session_state.selected_section = 'summary'
+                    st.session_state.selected_subsection = None
+                    st.rerun()
+
+    def get_section_display_info(self, section_key: str) -> dict:
+        """Get display information for a section."""
+        section_map = {
+            "summary": {"icon": "📋", "name": "System Summary"},
+            "user_impact": {"icon": "👥", "name": "User Impact"},
+            "error_counts": {"icon": "🚨", "name": "100 Error Counts"},
+            "correspondence_tango": {"icon": "📧", "name": "Correspondence"},
+            "benefit_issuance": {"icon": "📈", "name": "Benefit Issuance"},
+            "batch_status": {"icon": "⚙️", "name": "Batch Status"},
+            "daily_exceptions": {"icon": "⚠️", "name": "Daily Exceptions"},
+            "miscellaneous_bridges": {"icon": "🔗", "name": "Other Critical Processes"}
+        }
+        return section_map.get(section_key, {"icon": "📄", "name": section_key.replace('_', ' ').title()})
+
+    def get_subsection_display_info(self, section_key: str, subsection_key: str) -> dict:
+        """Get display information for a subsection."""
+        subsection_maps = {
+            "batch_status": {
+                "uat_batch_status": {"icon": "🧪", "name": "UAT Environment"},
+                "prd_batch_status": {"icon": "🏭", "name": "Production Environment"}
+            },
+            "daily_exceptions": {
+                "prd_online_exceptions": {"icon": "🌐", "name": "PRD Online Exceptions"},
+                "prd_batch_exceptions": {"icon": "⚙️", "name": "PRD Batch Exceptions"},
+                "prd_batch_runtime": {"icon": "⏱️", "name": "PRD Batch Runtime"},
+                "uat_online_exceptions": {"icon": "🧪", "name": "UAT Online Exceptions"},
+                "uat_batch_exceptions": {"icon": "🔧", "name": "UAT Batch Exceptions"},
+                "uat_batch_runtime": {"icon": "⌚", "name": "UAT Batch Runtime"}
+            }
+        }
+        
+        section_subsections = subsection_maps.get(section_key, {})
+        return section_subsections.get(subsection_key, {"icon": "📄", "name": subsection_key.replace('_', ' ').title()})
+
     def render_navigation_menu(self) -> Dict[str, str]:
         """Render left navigation menu with expandable tree structure and return selected section and period.
         
@@ -1289,30 +1393,17 @@ class MonitoringDashboard:
         <h4 style="color: #1f4e79; margin: 0;">👋 Welcome!</h4>
         <p style="margin: 5px 0; font-size: 12px; color: #333;">
         <b>Getting Started:</b><br>
-        1️⃣ Choose your date range below<br>
+        1️⃣ Set date on Home page<br>
         2️⃣ Click any dashboard section<br>
-        3️⃣ Select subsections to view data
+        3️⃣ View data for selected date
         </p>
         </div>
         """, unsafe_allow_html=True)
         
-        # Date filtering control with better UI
-        st.sidebar.markdown("### 📅 Date Range")
-        weeks_to_show = st.sidebar.selectbox(
-            "Show data from:",
-            options=[1, 2, 3, 4],
-            index=1,  # Default to 2 weeks (current + previous)
-            format_func=lambda x: {
-                1: "📍 Current week only",
-                2: "📊 Current + Previous week", 
-                3: "📈 Current + 2 Previous weeks",
-                4: "📋 Current + 3 Previous weeks"
-            }[x],
-            help="Filter data to show only recent complete weeks (Monday to Sunday)"
-        )
-        
-        # Store in session state for use in filtering
-        st.session_state['weeks_to_show'] = weeks_to_show
+        # Show current date filter status
+        selected_date = self.get_selected_date()
+        st.sidebar.markdown("### � Current Date Filter")
+        st.sidebar.info(f"� **Viewing:** {selected_date.strftime('%B %d, %Y')}\n\n🏠 Go to Home page to change date")
         
         st.sidebar.markdown("---")
         
@@ -1366,7 +1457,7 @@ class MonitoringDashboard:
             scroll-behavior: auto !important;
         }
         
-        /* Enhanced navigation styling with better color visibility */
+        /* Basic button styling - no forced colors, just layout */
         .stButton > button {
             text-align: left !important;
             border-radius: 8px !important;
@@ -1374,25 +1465,15 @@ class MonitoringDashboard:
             font-family: 'Inter', sans-serif !important;
         }
         
-        /* Make sidebar buttons more visible with container colors */
-        div[data-testid="stSidebar"] .stButton > button {
-            background: rgba(255,255,255,0.7) !important;
-            border: 1px solid rgba(0,0,0,0.15) !important;
-            color: #333 !important;
-            font-weight: 600 !important;
-            padding: 10px 14px !important;
-            border-radius: 6px !important;
-            margin: 2px 0 !important;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+        /* Grey hover effect for all buttons */
+        .stButton > button:hover {
+            background-color: #6c757d !important;
+            color: white !important;
         }
         
-        /* Enhanced hover effects */
-        div[data-testid="stSidebar"] .stButton > button:hover {
-            background: rgba(255,255,255,1) !important;
-            border-color: rgba(0,0,0,0.2) !important;
-            transform: translateX(2px) !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
-        }
+
+        
+
         
         /* Custom navigation button styling */
         .nav-button {
@@ -1463,31 +1544,7 @@ class MonitoringDashboard:
             box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
         }
         
-        /* Professional file-menu containers (dashboard buttons) */
-        .file-menu-container .stButton > button {
-            font-size: 11px !important;
-            color: var(--dark-gray) !important;
-            background: linear-gradient(135deg, #ffffff 0%, #f1f3f4 100%) !important;
-            border: 1px solid #dadce0 !important;
-            margin: 2px 0 !important;
-            padding: 6px 10px !important;
-            min-height: 28px !important;
-            line-height: 1.3 !important;
-            margin-left: 20px !important;
-            border-radius: 5px !important;
-            font-weight: 450 !important;
-            font-family: 'Inter', sans-serif !important;
-            transition: all 0.2s ease !important;
-        }
-        
-        /* Dashboard button hover effects */
-        .file-menu-container .stButton > button:hover {
-            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--secondary-blue) 100%) !important;
-            border-color: var(--primary-blue) !important;
-            color: white !important;
-            transform: translateX(3px) !important;
-            box-shadow: 0 3px 8px rgba(31, 78, 121, 0.2) !important;
-        }
+
         
         /* Alternative approach - target by indentation */
         div[style*="margin-left: 15px"] .stButton > button {
@@ -1504,12 +1561,7 @@ class MonitoringDashboard:
             line-height: 1.2 !important;
         }
         
-        /* Additional targeting for deeply nested buttons in sidebar */
-        div[data-testid="stSidebar"] div[style*="margin-left"] .stButton > button {
-            font-size: 11px !important;
-            color: #666 !important;
-            background-color: #f8f9fa !important;
-        }
+
         
         /* Professional table styling */
         .stDataFrame {
@@ -1645,22 +1697,493 @@ class MonitoringDashboard:
         selected_section = current_section_key
         selected_subsection = current_subsection_key
         
-        st.sidebar.subheader("🏠 Navigation Tree")
+        # Add quick navigation section at top
+        st.sidebar.markdown("### ⚡ Quick Access")
         
-        # Define all main sections with their details and unique colors - Reordered per user request
-        main_sections = [
-            {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False, "color": "#17a2b8", "active_color": "#138496"},
-            {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True, "color": "#4caf50", "active_color": "#388e3c"},
-            {"key": "error_counts", "icon": "🚨", "name": "100 Error Counts", "has_subsections": True, "color": "#f44336", "active_color": "#d32f2f"},
-            {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2"},
-            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True, "color": "#ff9800", "active_color": "#f57c00"},
-            {"key": "batch_status", "icon": "⚙️", "name": "Batch Status", "has_subsections": True, "color": "#795548", "active_color": "#5d4037"},
-            {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True, "color": "#9c27b0", "active_color": "#7b1fa2"},
-            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Other Critical Processes", "has_subsections": True, "color": "#008b8b", "active_color": "#006064"}
+        # Quick navigation buttons for high-priority sections
+        quick_nav_col1, quick_nav_col2 = st.sidebar.columns(2)
+        
+        with quick_nav_col1:
+            if st.button("🏠 Home", key="quick_home", use_container_width=True, help="Return to welcome page"):
+                # Clear all session state to return to welcome
+                for key in list(st.session_state.keys()):
+                    if key.startswith(('selected_', 'expanded_')):
+                        del st.session_state[key]
+                st.rerun()
+                
+        with quick_nav_col2:
+            if st.button("📋 Summary", key="quick_summary", use_container_width=True, help="Go to System Summary"):
+                st.session_state.selected_section = "summary"
+                st.session_state.selected_subsection = None
+                if 'expanded_sections' not in st.session_state:
+                    st.session_state.expanded_sections = set()
+                st.rerun()
+        
+        # Add current location indicator
+        current_section = st.session_state.get('selected_section')
+        current_subsection = st.session_state.get('selected_subsection')
+        
+        if current_section:
+            section_info = self.get_section_display_info(current_section)
+            location_text = f"📍 **Current:** {section_info['icon']} {section_info['name']}"
+            if current_subsection:
+                subsection_info = self.get_subsection_display_info(current_section, current_subsection)
+                location_text += f" → {subsection_info['icon']} {subsection_info['name']}"
+            st.sidebar.info(location_text)
+        else:
+            st.sidebar.success("📍 **Current:** 🏠 Welcome Page")
+        
+        st.sidebar.markdown("---")
+        
+        # Add keyboard shortcuts info
+        with st.sidebar.expander("⌨️ Keyboard Shortcuts", expanded=False):
+            st.markdown("""
+            **Navigation:**
+            - `Home` - Return to welcome page
+            - `S` - Go to System Summary
+            - `Esc` - Go back one level
+            
+            **Quick Access:**
+            - `B` - Batch Status
+            - `U` - User Impact
+            - `E` - Error Counts
+            - `C` - Correspondence
+            """)
+        
+        st.sidebar.markdown("---")
+        
+        st.sidebar.subheader("🗂️ All Sections")
+        
+        # Define sections organized by priority groups
+        high_priority_sections = [
+            {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False, "color": "#17a2b8", "active_color": "#138496", "priority": "overview"},
+            {"key": "batch_status", "icon": "⚙️", "name": "Batch Status", "has_subsections": True, "color": "#795548", "active_color": "#5d4037", "priority": "critical"},
+            {"key": "correspondence_tango", "icon": "�", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2", "priority": "critical"},
+            {"key": "user_impact", "icon": "�", "name": "User Impact", "has_subsections": True, "color": "#4caf50", "active_color": "#388e3c", "priority": "critical"},
+            {"key": "error_counts", "icon": "�", "name": "100 Error Counts", "has_subsections": True, "color": "#ffffff", "active_color": "#f0f0f0", "priority": "critical"}
         ]
         
-        # Render each main section with expandable functionality
-        for i, section in enumerate(main_sections):
+        business_intelligence_sections = [
+            {"key": "benefit_issuance", "icon": "📈", "name": "Benefit Issuance", "has_subsections": True, "color": "#ff9800", "active_color": "#f57c00", "priority": "business"},
+            {"key": "daily_exceptions", "icon": "⚠️", "name": "Daily Exceptions", "has_subsections": True, "color": "#9c27b0", "active_color": "#7b1fa2", "priority": "business"},
+            {"key": "miscellaneous_bridges", "icon": "🔗", "name": "Other Critical Processes", "has_subsections": True, "color": "#008b8b", "active_color": "#006064", "priority": "business"}
+        ]
+        
+        # Combine all sections for rendering
+        all_sections = high_priority_sections + business_intelligence_sections
+        
+        # Render high priority sections first
+        st.sidebar.markdown("##### 🔴 High Priority Monitoring")
+        for i, section in enumerate(high_priority_sections):
+            self.render_section_navigation(section, i)
+        
+        st.sidebar.markdown("---")
+        
+        # Render business intelligence sections
+        st.sidebar.markdown("##### 📊 Business Intelligence & Processing")  
+        for i, section in enumerate(business_intelligence_sections, start=len(high_priority_sections)):
+            self.render_section_navigation(section, i)
+            
+        # Return navigation result
+        return {
+            "selected_section": st.session_state.get('selected_section'),
+            "selected_period": st.session_state.get('selected_period', 'daily'),
+            "selected_subsection": st.session_state.get('selected_subsection')
+        }
+
+    def render_section_navigation(self, section: dict, index: int) -> None:
+        """Render navigation for a single section."""
+        section_key = section["key"]
+        section_icon = section["icon"]
+        section_name = section["name"]
+        section_color = section["color"]
+        active_color = section["active_color"]
+        has_subsections = section["has_subsections"]
+        
+        # Create expand/collapse button if section has subsections
+        if has_subsections:
+            is_expanded = section_key in st.session_state.expanded_sections
+            expand_symbol = "🔽" if is_expanded else "▶️"
+            
+            # Create main navigation with color-coded background
+            button_text = f"**{expand_symbol} {section_icon} {section_name}**"
+            
+            # Use colored background based on section color with distinct active/inactive colors
+            is_active = section_key == st.session_state.get('selected_section')
+            if is_active:
+                bg_color = f"{active_color}CC"  # Very strong active color (80% opacity)
+                border_color = active_color
+            else:
+                bg_color = f"{section_color}99"  # Strong inactive color (60% opacity)
+                border_color = section_color
+            
+            st.sidebar.markdown(f"""
+            <div style="margin: 0px 0px 0px 0px !important; padding: 1px 2px 1px 2px !important; background-color: {bg_color}; border-radius: 4px; border-left: 3px solid {border_color}; margin-bottom: 0px !important; margin-top: 0px !important;">
+            """, unsafe_allow_html=True)
+            
+            if st.sidebar.button(button_text, 
+                               key=f"expand_{section_key}_{index}", 
+                               help="Click to expand/collapse subsections",
+                               use_container_width=True, 
+                               type="secondary"):
+                # Toggle functionality for expand/collapse
+                if is_expanded:
+                    st.session_state.expanded_sections.discard(section_key)
+                else:
+                    st.session_state.expanded_sections.add(section_key)
+                
+                # Set this as the selected section
+                st.session_state.selected_section = section_key
+                st.session_state.selected_subsection = None
+                st.rerun()
+            
+            st.sidebar.markdown('</div>', unsafe_allow_html=True)
+            
+            # Show subsections if expanded
+            if is_expanded:
+                self.render_subsections(section_key, section_color)
+        else:
+            # Simple button for sections without subsections
+            button_text = f"**{section_icon} {section_name}**"
+            is_active = section_key == st.session_state.get('selected_section')
+            
+            if is_active:
+                bg_color = f"{active_color}CC"
+                border_color = active_color
+            else:
+                bg_color = f"{section_color}99"
+                border_color = section_color
+                
+            st.sidebar.markdown(f"""
+            <div style="margin: 0px 0px 0px 0px !important; padding: 1px 2px 1px 2px !important; background-color: {bg_color}; border-radius: 4px; border-left: 3px solid {border_color}; margin-bottom: 0px !important; margin-top: 0px !important;">
+            """, unsafe_allow_html=True)
+            
+            if st.sidebar.button(button_text,
+                               key=f"select_{section_key}_{index}",
+                               help=f"Navigate to {section_name}",
+                               use_container_width=True,
+                               type="secondary"):
+                st.session_state.selected_section = section_key
+                st.session_state.selected_subsection = None
+                if 'expanded_sections' not in st.session_state:
+                    st.session_state.expanded_sections = set()
+                st.rerun()
+                
+            st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+    def render_subsection_selection_page(self, section_key: str) -> None:
+        """Render a page for selecting subsections within a section."""
+        section_info = self.get_section_display_info(section_key)
+        
+        st.markdown(f"# {section_info['icon']} {section_info['name']}")
+        st.markdown("Please select a specific environment or subsection to view detailed monitoring data.")
+        st.markdown("---")
+        
+        if section_key == "batch_status":
+            st.markdown("### 🎯 Select Environment")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # UAT Environment Card
+                st.markdown("""
+                <div style="border: 2px solid #FF7043; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FFF3E0;">
+                    <h4>🧪 UAT Environment</h4>
+                    <p>Monitor UAT batch job status and failures for testing environment</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open UAT Batch Status", key="select_uat_batch", use_container_width=True):
+                    st.session_state.selected_section = "uat_batch_status"
+                    st.session_state.selected_subsection = None
+                    st.rerun()
+            
+            with col2:
+                # Production Environment Card  
+                st.markdown("""
+                <div style="border: 2px solid #1976D2; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E3F2FD;">
+                    <h4>🏭 Production Environment</h4>
+                    <p>Monitor Production batch job status and critical failures</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Production Batch Status", key="select_prd_batch", use_container_width=True):
+                    st.session_state.selected_section = "prd_batch_status"
+                    st.session_state.selected_subsection = None
+                    st.rerun()
+                    
+        elif section_key == "daily_exceptions":
+            st.markdown("### 🎯 Select Exception Type")
+            
+            # PRD Exceptions
+            st.markdown("#### 🏭 Production Environment")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("🌐 PRD Online Exceptions", key="select_prd_online", use_container_width=True):
+                    st.session_state.selected_subsection = "prd_online_exceptions"
+                    st.rerun()
+            with col2:
+                if st.button("⚙️ PRD Batch Exceptions", key="select_prd_batch_exc", use_container_width=True):
+                    st.session_state.selected_subsection = "prd_batch_exceptions"
+                    st.rerun()
+            with col3:
+                if st.button("⏱️ PRD Batch Runtime", key="select_prd_runtime", use_container_width=True):
+                    st.session_state.selected_subsection = "prd_batch_runtime"
+                    st.rerun()
+            
+            st.markdown("#### 🧪 UAT Environment")
+            col4, col5, col6 = st.columns(3)
+            
+            with col4:
+                if st.button("🧪 UAT Online Exceptions", key="select_uat_online", use_container_width=True):
+                    st.session_state.selected_subsection = "uat_online_exceptions" 
+                    st.rerun()
+            with col5:
+                if st.button("🔧 UAT Batch Exceptions", key="select_uat_batch_exc", use_container_width=True):
+                    st.session_state.selected_subsection = "uat_batch_exceptions"
+                    st.rerun()
+            with col6:
+                if st.button("⌚ UAT Batch Runtime", key="select_uat_runtime", use_container_width=True):
+                    st.session_state.selected_subsection = "uat_batch_runtime"
+                    st.rerun()
+                    
+        elif section_key == "benefit_issuance":
+            st.markdown("### 🎯 Select Time Period")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Daily Benefit Issuance
+                st.markdown("""
+                <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #F1F8E9;">
+                    <h4>📅 Daily Benefit Issuance</h4>
+                    <p>Monitor daily FAP, FIP, and SDA benefit processing and issuance</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Daily Dashboard", key="select_daily_benefit", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "daily"
+                    st.session_state.selected_subsection = "daily"
+                    st.rerun()
+                
+                # Weekly Benefit Issuance
+                st.markdown("""
+                <div style="border: 2px solid #FF9800; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FFF8E1;">
+                    <h4>📊 Weekly Benefit Issuance</h4>
+                    <p>View weekly trends and patterns in benefit issuance data</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Weekly Dashboard", key="select_weekly_benefit", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "weekly"
+                    st.session_state.selected_subsection = "weekly"
+                    st.rerun()
+            
+            with col2:
+                # Monthly Benefit Issuance
+                st.markdown("""
+                <div style="border: 2px solid #2196F3; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E3F2FD;">
+                    <h4>📈 Monthly Benefit Issuance</h4>
+                    <p>Analyze monthly benefit issuance performance and metrics</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Monthly Dashboard", key="select_monthly_benefit", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "monthly"
+                    st.session_state.selected_subsection = "monthly"
+                    st.rerun()
+                
+                # Quarterly Benefit Issuance
+                st.markdown("""
+                <div style="border: 2px solid #9C27B0; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #F3E5F5;">
+                    <h4>📋 Quarterly Benefit Issuance</h4>
+                    <p>Review quarterly benefit issuance summaries and reports</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Quarterly Dashboard", key="select_quarterly_benefit", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "quarterly"
+                    st.session_state.selected_subsection = "quarterly"
+                    st.rerun()
+                    
+        elif section_key == "miscellaneous_bridges":
+            st.markdown("### 🎯 Select Critical Process")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Mass Update
+                st.markdown("""
+                <div style="border: 2px solid #673AB7; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #F3E5F5;">
+                    <h4>🔄 Mass Update</h4>
+                    <p>Monitor mass update processes and batch operations</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Mass Update Dashboard", key="select_mass_update", use_container_width=True):
+                    st.session_state.selected_subsection = "mass_update"
+                    st.rerun()
+                
+                # Interfaces
+                st.markdown("""
+                <div style="border: 2px solid #3F51B5; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E8EAF6;">
+                    <h4>🔗 Interfaces</h4>
+                    <p>Monitor system interfaces and data exchange processes</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Interfaces Dashboard", key="select_interfaces", use_container_width=True):
+                    st.session_state.selected_subsection = "interfaces"
+                    st.rerun()
+            
+            with col2:
+                # Hung Threads
+                st.markdown("""
+                <div style="border: 2px solid #FF5722; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FBE9E7;">
+                    <h4>⚠️ Hung Threads</h4>
+                    <p>Monitor and track hung thread issues and resolution</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Hung Threads Dashboard", key="select_hung_threads", use_container_width=True):
+                    st.session_state.selected_subsection = "hung_threads"
+                    st.rerun()
+                
+                # Extra Batch Connections
+                st.markdown("""
+                <div style="border: 2px solid #607D8B; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #ECEFF1;">
+                    <h4>🔌 Extra Batch Connections</h4>
+                    <p>Monitor extra batch connections and connection management</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Extra Batch Connections Dashboard", key="select_extra_batch", use_container_width=True):
+                    st.session_state.selected_subsection = "extra_batch_connections"
+                    st.rerun()
+                    
+        elif section_key == "correspondence_tango":
+            st.markdown("### 🎯 Select Correspondence Type")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Tango Monitoring
+                st.markdown("""
+                <div style="border: 2px solid #2196F3; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E3F2FD;">
+                    <h4>📨 Tango Monitoring</h4>
+                    <p>Monitor Tango system status and performance metrics</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open Tango Monitoring Dashboard", key="select_tango_monitoring", use_container_width=True):
+                    st.session_state.selected_subsection = "Tango Monitoring"
+                    st.rerun()
+            
+            with col2:
+                # View History Screen Validation
+                st.markdown("""
+                <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E8F5E8;">
+                    <h4>📋 View History Screen Validation</h4>
+                    <p>Track view history screen validation processes and results</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 Click Here to Open View History Dashboard", key="select_view_history", use_container_width=True):
+                    st.session_state.selected_subsection = "View History Screen Validation"
+                    st.rerun()
+                    
+        elif section_key == "error_counts":
+            st.markdown("### 🎯 Select Error Count Type")
+            
+            # Daily 100 Error Counts
+            st.markdown("""
+            <div style="border: 2px solid #F44336; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FFEBEE;">
+                <h4>🚨 Daily 100 Error Counts</h4>
+                <p>Monitor daily session timeouts and critical system errors</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("📊 Click Here to Open Daily Error Counts Dashboard", key="select_daily_errors", use_container_width=True):
+                st.session_state.selected_section = "error_counts"
+                st.session_state.selected_subsection = "Daily 100 Error Counts"
+                st.rerun()
+                
+        elif section_key == "user_impact":
+            st.markdown("### 🎯 Select User Impact Type")
+            
+            # Daily User Impact Status
+            st.markdown("""
+            <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E8F5E8;">
+                <h4>👥 Daily User Impact Status</h4>
+                <p>Monitor daily user experience metrics and error percentages</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("📊 Click Here to Open Daily User Impact Dashboard", key="select_daily_user_impact", use_container_width=True):
+                st.session_state.selected_section = "user_impact"
+                st.session_state.selected_subsection = "Daily User Impact Status"
+                st.rerun()
+
+    def render_subsections(self, section_key: str, section_color: str) -> None:
+        """Render subsections for a given section."""
+        if section_key == "batch_status":
+            # Batch Status subsections
+            subsections = [
+                {"key": "uat_batch_status", "icon": "🧪", "name": "UAT Environment"},
+                {"key": "prd_batch_status", "icon": "🏭", "name": "Production Environment"}
+            ]
+            
+            st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
+            for subsection in subsections:
+                is_selected = st.session_state.get('selected_subsection') == subsection["key"]
+                button_style = "primary" if is_selected else "secondary"
+                
+                if st.sidebar.button(f"  └─ {subsection['icon']} {subsection['name']}", 
+                                   key=f"subsection_{subsection['key']}", 
+                                   help=f"Navigate to {subsection['name']}",
+                                   use_container_width=True,
+                                   type=button_style):
+                    st.session_state.selected_section = section_key
+                    st.session_state.selected_subsection = subsection["key"]
+                    st.rerun()
+            st.sidebar.markdown('</div>', unsafe_allow_html=True)
+            
+        elif section_key == "daily_exceptions":
+            # Daily Exceptions subsections  
+            subsections = [
+                {"key": "prd_online_exceptions", "icon": "🌐", "name": "PRD Online Exceptions"},
+                {"key": "prd_batch_exceptions", "icon": "⚙️", "name": "PRD Batch Exceptions"},
+                {"key": "prd_batch_runtime", "icon": "⏱️", "name": "PRD Batch Runtime"},
+                {"key": "uat_online_exceptions", "icon": "🧪", "name": "UAT Online Exceptions"},
+                {"key": "uat_batch_exceptions", "icon": "🔧", "name": "UAT Batch Exceptions"},
+                {"key": "uat_batch_runtime", "icon": "⌚", "name": "UAT Batch Runtime"}
+            ]
+            
+            st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
+            for subsection in subsections:
+                is_selected = st.session_state.get('selected_subsection') == subsection["key"]
+                button_style = "primary" if is_selected else "secondary"
+                
+                if st.sidebar.button(f"  └─ {subsection['icon']} {subsection['name']}", 
+                                   key=f"subsection_{subsection['key']}", 
+                                   help=f"Navigate to {subsection['name']}",
+                                   use_container_width=True,
+                                   type=button_style):
+                    st.session_state.selected_section = section_key
+                    st.session_state.selected_subsection = subsection["key"]
+                    st.rerun()
+            st.sidebar.markdown('</div>', unsafe_allow_html=True)
+        
+        else:
+            # For other sections, show a placeholder or file-based navigation
+            st.sidebar.markdown('<div style="margin-left: 15px; color: #666;">', unsafe_allow_html=True)
+            st.sidebar.write("📄 Select from available files")
+            st.sidebar.markdown('</div>', unsafe_allow_html=True)
             section_key = section["key"]
             section_icon = section["icon"]
             section_name = section["name"]
@@ -2194,7 +2717,7 @@ class MonitoringDashboard:
         <div style="background-color: #f0f8ff; padding: 8px; border-radius: 5px; font-size: 11px;">
         <b>💡 Tips:</b><br>
         • Expand sections with ▶️ arrows<br>
-        • Data auto-filters by date range<br>
+        • Data shows only selected date<br>
         • Red highlights show issues<br>
         • Currency & percentages auto-format
         </div>
@@ -2763,10 +3286,19 @@ class MonitoringDashboard:
     def render_main_content_with_data(self, df: pd.DataFrame, nav_result: Dict[str, Any]) -> None:
         """Render main content with loaded data."""
         
-
+        # Get current selections from session state
+        selected_section = st.session_state.get('selected_section')
+        selected_subsection = st.session_state.get('selected_subsection')  
+        selected_period = st.session_state.get('selected_period', 'daily')
         
-        selected_section = nav_result.get("section")
-        selected_period = nav_result.get("period")
+        # Show date filter status if a specific date is selected
+        from datetime import datetime
+        selected_date = self.get_selected_date()
+        recent_date_str = self.get_most_recent_weekday_date()
+        default_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date() if recent_date_str != "No recent data" else datetime.now().date()
+        
+        if selected_date != default_date:
+            st.info(f"📅 **Viewing data for: {selected_date.strftime('%B %d, %Y')}** | Return home to change date")
         
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
@@ -2774,8 +3306,14 @@ class MonitoringDashboard:
         # Apply standardized date formatting to all date columns
         df = format_dataframe_dates(df)
         
-        # Apply date range filtering to all sections (including Daily Exceptions)
-        df = filter_data_to_recent_weeks(df)
+        # Always filter by the selected date only - no historical data
+        original_df = df.copy()
+        df = self.filter_data_by_selected_date(df)
+        
+        # If no data for selected date, show warning but keep empty DataFrame
+        if df.empty:
+            st.warning(f"⚠️ No data found for {selected_date.strftime('%B %d, %Y')}. Please select a different date or check data availability.")
+            # Return empty DataFrame to show no data rather than fallback to historical data
         
         # Filter data based on selected period
         filtered_by_period_df = self.filter_data_by_period(df, selected_period)
@@ -2953,70 +3491,152 @@ class MonitoringDashboard:
         else:
             st.error(f"Handler not implemented for section: {selected_section}")
 
-    def render_summary_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render System Summary with status cards for all dashboard sections."""
+    def render_summary_home_page(self) -> None:
+        """Render System Summary as the main home page with navigation cards."""
         
-        st.markdown("## 📊 System Health Overview")
-        st.markdown("Monitor the overall health and status of all system components at a glance.")
+        # Keep only grey hover effect for navigation buttons
+        st.markdown("""
+        <style>
+        /* Grey hover effect for all buttons */
+        .stButton > button:hover {
+            background-color: #6c757d !important;
+            background: #6c757d !important;
+            color: white !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
-        # Add a small note about scrolling
-        st.info("💡 **Tip:** If the page doesn't start from the top, scroll up to see the full content.")
+        # Enhanced header using Streamlit native components with custom styling
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #1976d2 0%, #1565c0 50%, #0d47a1 100%); color: white; padding: 40px 30px; border-radius: 15px; text-align: center; margin: 0 0 30px 0; box-shadow: 0 8px 32px rgba(25, 118, 210, 0.3); border: 2px solid rgba(255, 255, 255, 0.1);">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                <div style="background: rgba(255, 255, 255, 0.15); border-radius: 50%; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; margin-right: 25px; font-size: 2.5rem;">🏠</div>
+                <div style="text-align: left;">
+                    <h1 style="margin: 0 0 10px 0; font-size: 3rem; font-weight: 700; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">MDHHS Bridges</h1>
+                    <p style="margin: 0; font-size: 1.3rem; color: rgba(255, 255, 255, 0.9); font-weight: 400; text-shadow: 1px 1px 2px rgba(0,0,0,0.2);">Monitoring & Operations Status Center</p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Add home button on Summary page
+        # Add description using native Streamlit info box
+        st.info("🎯 **Your Command Center:** Monitor system health, track performance metrics, and access detailed reports all in one place.\n\n📊 Real-time monitoring • 🔍 Detailed analytics • ⚡ Quick insights • 🛡️ System oversight")
+        
+        # Date selection functionality
+        from datetime import datetime, timedelta
+        
+        # Get the most recent weekday date as default
+        recent_date = self.get_most_recent_weekday_date()
+        default_date = datetime.strptime(recent_date, '%Y-%m-%d').date() if recent_date != "No recent data" else datetime.now().date()
+        
+        # Initialize selected date in session state if not exists
+        if 'selected_date' not in st.session_state:
+            st.session_state.selected_date = default_date
+        
+        # Data Date status card with current selection
+        current_date_display = st.session_state.selected_date.strftime('%Y-%m-%d')
+        status_cards_html = f"""
+        <div style="display: flex; justify-content: center; margin: 30px 0;">
+            <div style="background: linear-gradient(135deg, #17a2b8 0%, #6f42c1 100%); color: white; padding: 24px 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 16px rgba(23, 162, 184, 0.3); min-width: 300px;">
+                <div style="font-size: 1.8rem; font-weight: 700; margin-bottom: 8px;">📅 Current Data Date</div>
+                <div style="font-size: 1.4rem; font-weight: 500; opacity: 0.95;">{current_date_display}</div>
+            </div>
+        </div>
+        """
+        st.markdown(status_cards_html, unsafe_allow_html=True)
+        
+        # Date picker section
+        st.markdown("### 📅 Select Different Date")
         col1, col2, col3 = st.columns([1, 2, 1])
+        
         with col2:
-            if st.button("🏠 Return to Bridges M&O Status Home", key="summary_home_button", help="Return to main welcome page", use_container_width=True):
-                # Clear all session state to return to welcome page
-                for key in list(st.session_state.keys()):
-                    if key.startswith(('selected_', 'expanded_')):
-                        del st.session_state[key]
+            # Date picker
+            selected_date = st.date_input(
+                "Choose a date to view data from:",
+                value=st.session_state.selected_date,
+                min_value=datetime(2020, 1, 1).date(),
+                max_value=datetime.now().date(),
+                help="Select any date to view historical data across all dashboards"
+            )
+            
+            # Update session state if date changed
+            if selected_date != st.session_state.selected_date:
+                st.session_state.selected_date = selected_date
+                st.success(f"✅ Date updated to {selected_date.strftime('%Y-%m-%d')}. This will apply to all dashboards.")
+                st.rerun()
+            
+            # Reset to latest date button
+            if st.button("🔄 Reset to Latest Available Date", use_container_width=True):
+                st.session_state.selected_date = default_date
+                st.success(f"✅ Date reset to {default_date.strftime('%Y-%m-%d')}")
                 st.rerun()
         
         st.markdown("---")
         
-        # Define dashboard sections for status monitoring (matching left navigation)
+        # Show alert if viewing historical data
+        from datetime import datetime
+        selected_date = self.get_selected_date()
+        recent_date_str = self.get_most_recent_weekday_date()
+        default_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date() if recent_date_str != "No recent data" else datetime.now().date()
+        
+        if selected_date != default_date:
+            st.warning(f"📅 **Historical View Active**: All dashboards will show data for **{selected_date.strftime('%B %d, %Y')}**. Use the date picker above to change or reset to latest data.")
+        
+        self.render_dashboard_navigation_cards()
+
+    def render_dashboard_navigation_cards(self) -> None:
+        """Render navigation cards for all dashboard sections."""
+        
+        # Define dashboard sections for navigation
         dashboard_sections = [
             {
-                "key": "user_impact", 
+                "key": "batch_status", 
+                "name": "Batch Status",
+                "icon": "⚙️",
+                "description": "Monitor UAT & Production batch job status and failures",
+                "priority": "high"
+            },
+            {
+                "key": "correspondence_tango",
+                "name": "Correspondence", 
+                "icon": "📧",
+                "description": "Track Tango monitoring & file upload status",
+                "priority": "high"
+            },
+            {
+                "key": "user_impact",
                 "name": "User Impact",
-                "icon": "",
-                "description": "User experience metrics & error percentages"
+                "icon": "👥", 
+                "description": "Monitor user experience metrics & error percentages",
+                "priority": "high"
             },
             {
                 "key": "error_counts",
                 "name": "100 Error Counts",
-                "icon": "",
-                "description": "Session timeouts & system errors"
-            },
-            {
-                "key": "correspondence_tango",
-                "name": "Correspondence",
-                "icon": "", 
-                "description": "Tango monitoring & file uploads"
+                "icon": "🚨",
+                "description": "Track session timeouts & critical system errors",
+                "priority": "high"
             },
             {
                 "key": "benefit_issuance",
-                "name": "Benefit Issuance", 
-                "icon": "",
-                "description": "FAP, FIP, SDA processing status"
-            },
-            {
-                "key": "batch_status",
-                "name": "Batch Status",
-                "icon": "⚙️",
-                "description": "UAT & Production batch job monitoring"
+                "name": "Benefit Issuance",
+                "icon": "📈", 
+                "description": "Monitor FAP, FIP, SDA processing & issuance status",
+                "priority": "business"
             },
             {
                 "key": "daily_exceptions",
                 "name": "Daily Exceptions",
                 "icon": "⚠️",
-                "description": "Online & batch exceptions (PRD/UAT)"
+                "description": "Track online & batch exceptions across environments",
+                "priority": "business"
             },
             {
                 "key": "miscellaneous_bridges",
                 "name": "Other Critical Processes",
                 "icon": "🔗",
-                "description": "Critical system processes & background operations"
+                "description": "Monitor critical system processes & operations",
+                "priority": "business"
             }
         ]
         
@@ -3024,8 +3644,8 @@ class MonitoringDashboard:
         st.markdown("### 🎛️ Bridges M&O Summary")
         
         # Display the most recent weekday date
-        recent_date = self.get_most_recent_weekday_date()
-        st.markdown(f"**Data as of:** {recent_date}")
+        selected_date = self.get_selected_date()
+        st.markdown(f"**Data as of:** {selected_date}")
         st.markdown("")  # Add spacing
         
         # Create status cards in properly aligned rows of 3 cards each
@@ -3035,113 +3655,46 @@ class MonitoringDashboard:
         
         # Process sections in batches of 3
         for row_idx in range(0, total_sections, sections_per_row):
-            row_sections = dashboard_sections[row_idx:row_idx + sections_per_row]
-            
             # Create columns for this row
-            if len(row_sections) == 3:
-                col1, col2, col3 = st.columns(3, gap="medium")
-                row_columns = [col1, col2, col3]
-            elif len(row_sections) == 2:
-                col1, col2, col3 = st.columns([1, 1, 1], gap="medium") 
-                row_columns = [col1, col2, col3]
-            else:  # 1 section
-                col1, col2, col3 = st.columns([1, 1, 1], gap="medium")
-                row_columns = [col2]  # Center the single card
-        
-            # Render cards for this row
-            for i, section in enumerate(row_sections):
-                with row_columns[i]:
-                    try:
-                        # Get status for this section
-                        status, status_color, status_text = self.get_section_status(section["key"])
-                        
-                        # Create status card
-                        self.render_status_card(
-                            section["name"],
-                            section["icon"], 
-                            section["description"],
-                            status,
-                            status_color,
-                            status_text
-                        )
-                    except Exception as e:
-                        st.error(f"Error loading {section['name']}: {str(e)}")
-                        # Create fallback status card
-                        self.render_status_card(
-                            section["name"],
-                            section["icon"], 
-                            section["description"],
-                            "warning",
-                            "#ffc107",
-                            "Status unavailable"
-                        )
-                
+            cols = st.columns(sections_per_row, gap="medium")
+            
+            # Fill columns with cards
+            for col_idx in range(sections_per_row):
+                section_idx = row_idx + col_idx
+                if section_idx < total_sections:
+                    section = dashboard_sections[section_idx]
                     
-                    # Add navigation button below each card
-                    if st.button(
-                        f"📊 View {section['name']} Dashboard", 
-                        key=f"nav_to_{section['key']}", 
-                        help=f"Navigate to {section['name']} section",
-                        use_container_width=True
-                    ):
-                        # Clear data state when navigating to a new section
-                        for key in list(st.session_state.keys()):
-                            if key.startswith(('data_', 'df_', 'clicked_', 'current_data')):
-                                del st.session_state[key]
+                    with cols[col_idx]:
+                        # Get status for this section
+                        try:
+                            status, status_color, status_text = self.get_section_status(section["key"])
+                        except Exception as e:
+                            status, status_color, status_text = ("normal", "#6c757d", "Status monitoring available")
                         
-                        # Initialize expanded_sections if not exists
-                        if 'expanded_sections' not in st.session_state:
-                            st.session_state.expanded_sections = set()
+                        # Render the status card with navigational button
+                        self.render_status_card(
+                            title=section["name"],
+                            icon=section["icon"],
+                            description=section["description"],
+                            status=status,
+                            color=status_color,
+                            status_text=status_text
+                        )
                         
-                        # Auto-expand the section in navigation (all sections in System Summary have subsections)
-                        # Clear other expanded sections and expand the target section
-                        st.session_state.expanded_sections.clear()
-                        st.session_state.expanded_sections.add(section["key"])
-                        
-                        st.session_state.selected_section = section["key"]
-                        st.session_state.selected_subsection = None
-                        st.rerun()
-            
-            # Add spacing between rows (but not after the last row)
-            if row_idx + sections_per_row < total_sections:
-                st.markdown("<br>", unsafe_allow_html=True)
+                        # Add navigation button below each card
+                        if st.button(
+                            f"📊 View {section['name']} Dashboard", 
+                            key=f"nav_to_{section['key']}", 
+                            help=f"Navigate to {section['name']} section",
+                            use_container_width=True
+                        ):
+                            st.session_state.selected_section = section["key"]
+                            st.session_state.selected_subsection = None
+                            st.rerun()        # Separate sections by priority for the old navigation (keep this as fallback)
+        high_priority = [s for s in dashboard_sections if s["priority"] == "high"]
+        business_intel = [s for s in dashboard_sections if s["priority"] == "business"]
         
-        # Add final spacing
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Summary metrics
-        st.markdown("### 📈 Quick Metrics")
-        
-        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-        
-        with metric_col1:
-            st.metric("Total Sections", "12", "2 new")
-            
-        with metric_col2:
-            st.metric("Active Dashboards", "8", "1 updated") 
-            
-        with metric_col3:
-            st.metric("System Health", "95%", "2%")
-            
-        with metric_col4:
-            st.metric("Data Freshness", "Real-time", "✓")
-        
-        st.markdown("---")
-        
-        # Alert section
-        st.markdown("### 🔔 Recent Alerts")
-        
-        alert_col1, alert_col2 = st.columns(2)
-        
-        with alert_col1:
-            st.warning("**⚠️ Medium Priority Alert**\n\nError counts slightly elevated in the last 2 hours. Monitor for trends.")
-            
-        with alert_col2:
-            st.success("**✅ All Systems Normal**\n\nBenefit issuance processing within normal parameters.")
-        
-        # Instructions
+        # Add some spacing and instructions
         st.markdown("---")
         st.info("""
         **💡 How to use the Summary Dashboard:**
@@ -3149,9 +3702,89 @@ class MonitoringDashboard:
         - **Green cards** indicate normal operations
         - **Yellow cards** suggest attention needed  
         - **Red cards** require immediate action
-        - Click on any status card to navigate to that section
-        - Use the navigation tree to explore detailed data
+        - Click the button below each summary card to access that section's dashboard
+        - Each dashboard provides detailed monitoring data and analytics
         """)
+
+    def render_section_cards(self, sections: list) -> None:
+        """Render cards for a list of sections."""
+        # Create cards in rows of 2
+        for i in range(0, len(sections), 2):
+            col1, col2 = st.columns(2, gap="large")
+            
+            # First card
+            if i < len(sections):
+                with col1:
+                    self.render_navigation_card(sections[i])
+            
+            # Second card (if exists)
+            if i + 1 < len(sections):
+                with col2:
+                    self.render_navigation_card(sections[i + 1])
+
+    def render_navigation_card(self, section: dict) -> None:
+        """Render a single navigation card with navigation button below."""
+        # Get status for this section
+        try:
+            status, status_color, status_text = self.get_section_status(section["key"])
+        except:
+            status, status_color, status_text = ("normal", "#6c757d", "Status available")
+        
+        # Determine card styling based on status
+        if status == "normal":
+            border_color = "#28a745"
+            bg_color = "#f8fff9"
+            status_icon = "✅"
+        elif status == "warning": 
+            border_color = "#ffc107"
+            bg_color = "#fffdf5"
+            status_icon = "⚠️"
+        else:  # critical
+            border_color = "#dc3545"
+            bg_color = "#fff5f5"
+            status_icon = "🚨"
+        
+        # Render the card content
+        st.markdown(f"""
+        <div style="
+            border: 2px solid {border_color};
+            border-radius: 10px;
+            padding: 20px;
+            margin: 10px 0;
+            background-color: {bg_color};
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        ">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 24px; margin-right: 15px;">{section['icon']}</span>
+                <h4 style="margin: 0; color: #333;">{section['name']}</h4>
+            </div>
+            <p style="color: #666; margin-bottom: 12px; font-size: 14px;">
+                {section['description']}
+            </p>
+            <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                <span style="margin-right: 8px;">{status_icon}</span>
+                <span style="color: {status_color}; font-weight: bold; font-size: 13px;">
+                    {status_text}
+                </span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Button below the card with section-specific text
+        if st.button(
+            f"📊 Click Here to Open {section['name']}",
+            key=f"nav_card_{section['key']}",
+            help=f"Navigate to {section['name']} monitoring dashboard",
+            use_container_width=True
+        ):
+            st.session_state.selected_section = section["key"]
+            st.session_state.selected_subsection = None
+            st.rerun()
+
+    def render_summary_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Legacy method - redirects to new home page."""
+        self.render_summary_home_page()
+        
 
     def get_section_status(self, section_key: str):
         """Get status for a dashboard section. Returns (status, color, text)."""
@@ -3179,83 +3812,96 @@ class MonitoringDashboard:
             return ("warning", "#ffc107", f"Status check failed: {str(e)}")
     
     def get_error_counts_status(self):
-        """Get status for 100 Error Counts based on real data and thresholds."""
+        """Get status for 100 Error Counts using Total Count with specific thresholds."""
         try:
-            # Load the Daily 100 Error Counts Excel file
+            # Load data directly using ExcelDataLoader
+            from src.data_loader import ExcelDataLoader
             error_counts_path = Path(__file__).parent / "Monitoring Data Files" / "100 Error Counts" / "Daily 100 Error Counts.xlsx"
             
             if not error_counts_path.exists():
-                return ("warning", "#ffc107", "Data file not found")
+                return ("warning", "#ffc107", "No error data file found")
             
-            # Load the Excel file
-            from src.data_loader import ExcelDataLoader
             loader = ExcelDataLoader(str(error_counts_path))
             df = loader.load_data()
             
-            if df.empty:
-                return ("warning", "#ffc107", "No data available")
+            if df is None or df.empty:
+                return ("warning", "#ffc107", "No error data available")
             
-            # Get data for the specific target date (sysdate-1 business day)
-            target_date = self.get_target_business_date()
-            recent_data = self.get_data_for_specific_date(df, target_date)
+            # Apply date filtering
+            filtered_df = self.filter_data_by_selected_date(df)
             
-            if recent_data is None:
-                return ("warning", "#ffc107", "Data not available")
+            if filtered_df.empty:
+                selected_date = self.get_selected_date()
+                return ("normal", "#6c757d", f"No data for {selected_date}")
             
-            # Get total error count for the most recent weekday
-            total_count = self.calculate_total_error_count(recent_data)
-            
-            # Apply thresholds
-            if total_count > 750:
-                return ("critical", "#dc3545", f"High error count: {total_count}")
-            elif total_count >= 700:
-                return ("warning", "#ffc107", f"Moderate error count: {total_count}")
+            # Get the most recent row (should be only one after date filtering)
+            if len(filtered_df) > 0:
+                recent_data = filtered_df.iloc[0]
+                
+                # Get the Total Count value using our existing method
+                total_count = self.calculate_total_error_count(recent_data)
+                
+                if total_count is None:
+                    return ("warning", "#ffc107", "Total Count not found")
+                
+                # Apply specific thresholds: Red ≥750, Yellow 650-749, Green ≤649
+                if total_count >= 750:
+                    return ("critical", "#dc3545", f"{total_count} errors detected")
+                elif total_count >= 650:
+                    return ("warning", "#ffc107", f"{total_count} errors detected")
+                else:  # <= 649
+                    return ("normal", "#28a745", f"{total_count} errors detected")
             else:
-                return ("normal", "#28a745", f"Normal error count: {total_count}")
+                return ("warning", "#ffc107", "No processed data available")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error loading data: {str(e)}")
     
     def get_user_impact_status(self):
-        """Get status for User Impact based on 0 Errors % column and thresholds."""
+        """Get status for User Impact based on 0 Errors % with 89%/90% thresholds."""
         try:
-            # Load the Daily User Impact Status Excel file and process it the same way as the dashboard
+            # Load data directly using ExcelDataLoader
+            from src.data_loader import ExcelDataLoader
             user_impact_path = Path(__file__).parent / "Monitoring Data Files" / "User Impact" / "Daily User Impact Status.xlsx"
             
             if not user_impact_path.exists():
-                return ("warning", "#ffc107", "Data file not found")
+                return ("warning", "#ffc107", "No user impact data file found")
             
-            # Load and process the data exactly like the User Impact dashboard does
-            from src.data_loader import ExcelDataLoader
             loader = ExcelDataLoader(str(user_impact_path))
             df = loader.load_data()
             
-            if df.empty:
-                return ("warning", "#ffc107", "No data available")
+            if df is None or df.empty:
+                return ("warning", "#ffc107", "No user impact data available")
             
-            # Process the data to add calculated percentage columns (same as render_user_impact_table)
-            processed_df = self.add_user_impact_percentage_columns(df.copy())
+            # Apply date filtering
+            filtered_df = self.filter_data_by_selected_date(df)
             
-            # Get data for the specific target date (sysdate-1 business day)
-            target_date = self.get_target_business_date()
-            recent_data = self.get_data_for_specific_date(processed_df, target_date)
+            if filtered_df.empty:
+                selected_date = self.get_selected_date()
+                return ("normal", "#6c757d", f"No data for {selected_date}")
             
-            if recent_data is None:
-                return ("warning", "#ffc107", "Data not available")
+            # Process data to add calculated percentage columns (same as the dashboard)
+            processed_df = self.add_user_impact_percentage_columns(filtered_df.copy())
             
-            # Get the 0 Errors % value from the processed data
-            zero_errors_pct = self.get_zero_errors_percentage(recent_data)
-            
-            if zero_errors_pct is None:
-                return ("warning", "#ffc107", "0 Errors % column not found")
-            
-            # Apply thresholds based on user requirements
-            if zero_errors_pct < 89:
-                return ("critical", "#dc3545", f"Low success rate: {zero_errors_pct:.2f}%")
-            elif zero_errors_pct >= 89 and zero_errors_pct <= 90:
-                return ("warning", "#ffc107", f"Moderate success rate: {zero_errors_pct:.2f}%")
-            else:  # > 90%
-                return ("normal", "#28a745", f"Good success rate: {zero_errors_pct:.2f}%")
+            # Get the most recent row (should be only one after date filtering)
+            if len(processed_df) > 0:
+                recent_data = processed_df.iloc[0]
+                
+                # Get the 0 Errors % value using our existing method
+                zero_errors_pct = self.get_zero_errors_percentage(recent_data)
+                
+                if zero_errors_pct is None:
+                    return ("warning", "#ffc107", "0 Errors % calculation failed")
+                
+                # Apply the 89%/90% thresholds as originally designed
+                if zero_errors_pct < 89:
+                    return ("critical", "#dc3545", f"Low success rate: {zero_errors_pct:.1f}%")
+                elif zero_errors_pct >= 89 and zero_errors_pct <= 90:
+                    return ("warning", "#ffc107", f"Moderate success rate: {zero_errors_pct:.1f}%")
+                else:  # > 90%
+                    return ("normal", "#28a745", f"Good success rate: {zero_errors_pct:.1f}%")
+            else:
+                return ("warning", "#ffc107", "No processed data available")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error loading data: {str(e)}")
@@ -3277,12 +3923,12 @@ class MonitoringDashboard:
             if df.empty:
                 return ("warning", "#ffc107", "No Tango data available")
             
-            # Get data for the specific target date (sysdate-1 business day)
-            target_date = self.get_target_business_date()
-            recent_data = self.get_data_for_specific_date(df, target_date)
+            # Get data for the selected date
+            selected_date = self.get_selected_date()
+            filtered_df = self.filter_data_by_selected_date(df)
             
-            if recent_data is None:
-                return ("warning", "#ffc107", "Data not available")
+            if filtered_df.empty:
+                return ("normal", "#6c757d", f"No correspondence data for {selected_date}")
             
             # Find the "Number of Files not sent to CPC" column
             files_not_sent_col = None
@@ -3291,23 +3937,19 @@ class MonitoringDashboard:
                     files_not_sent_col = col
                     break
             
-            if files_not_sent_col is None:
-                return ("warning", "#ffc107", "Files not sent column not found")
-            
-            # Get the value for the most recent date
-            try:
-                files_not_sent_value = float(recent_data[files_not_sent_col]) if pd.notna(recent_data[files_not_sent_col]) else 0
-            except (ValueError, TypeError):
-                return ("warning", "#ffc107", "Invalid files not sent data")
-            
-            # Apply red/green threshold (≥7 is red, <7 is green)
-            if files_not_sent_value >= 7:
-                return ("critical", "#dc3545", f"{int(files_not_sent_value)} Files not sent to CPC")
+            if files_not_sent_col is not None and files_not_sent_col in filtered_df.columns:
+                files_not_sent = filtered_df[files_not_sent_col].sum()
+                if files_not_sent > 10:
+                    return ("critical", "#dc3545", f"{files_not_sent} files not sent")
+                elif files_not_sent > 0:
+                    return ("warning", "#ffc107", f"{files_not_sent} files not sent")
+                else:
+                    return ("normal", "#28a745", "All files sent")
             else:
-                return ("normal", "#28a745", f"{int(files_not_sent_value)} Files not sent to CPC")
+                return ("normal", "#28a745", "Data available")
                 
         except Exception as e:
-            return ("warning", "#ffc107", f"Error loading Tango data: {str(e)}")
+            return ("warning", "#ffc107", f"Error loading data: {str(e)}")
     
     def get_benefit_issuance_status(self):
         """Get status for Benefit Issuance section."""
@@ -3646,10 +4288,293 @@ class MonitoringDashboard:
                 days_back = yesterday.weekday() - 4  # 4 is Friday
                 target_date = yesterday - timedelta(days=days_back)
             
-            return target_date.strftime("%B %d, %Y")
+            return target_date.strftime("%Y-%m-%d")
             
         except Exception:
-            return "Date not available"
+            return "No recent data"
+    
+    def get_selected_date(self):
+        """Get the currently selected date from session state or default to most recent."""
+        from datetime import datetime, timedelta
+        
+        if 'selected_date' in st.session_state:
+            return st.session_state.selected_date
+        else:
+            # Fallback to most recent weekday
+            recent_date_str = self.get_most_recent_weekday_date()
+            if recent_date_str != "No recent data":
+                return datetime.strptime(recent_date_str, '%Y-%m-%d').date()
+            else:
+                return datetime.now().date()
+    
+    def get_selected_date_formatted(self, format_type="display"):
+        """Get the selected date in various formats for data filtering."""
+        selected_date = self.get_selected_date()
+        
+        if format_type == "display":
+            return selected_date.strftime("%B %d, %Y")
+        elif format_type == "filename":
+            return selected_date.strftime("%Y-%m-%d")
+        elif format_type == "filter":
+            return selected_date.strftime("%Y-%m-%d")
+        else:
+            return selected_date.strftime("%Y-%m-%d")
+    
+    def filter_data_by_selected_date(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Filter dataframe to show only data for the selected date."""
+        if df is None or df.empty:
+            return df
+            
+        # Get selected date directly from session state to ensure it's current
+        if 'selected_date' in st.session_state:
+            selected_date = st.session_state.selected_date
+        else:
+            # Fallback to most recent weekday
+            from datetime import datetime
+            recent_date_str = self.get_most_recent_weekday_date()
+            if recent_date_str != "No recent data":
+                selected_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date()
+            else:
+                selected_date = datetime.now().date()
+        
+        # Try to find date columns in the dataframe
+        date_columns = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(date_word in col_lower for date_word in ['date', 'day', 'time', 'created', 'updated', 'week']):
+                date_columns.append(col)
+        
+        # If no obvious date columns found, return empty dataframe (no data for selected date)
+        if not date_columns:
+            return pd.DataFrame(columns=df.columns)
+        
+        # Filter by the selected date
+        filtered_df = df.copy()
+        found_matching_data = False
+        
+        for date_col in date_columns:
+            try:
+                # Convert the date column to datetime if it's not already
+                if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
+                    filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
+                
+                # Filter for the selected date
+                mask = filtered_df[date_col].dt.date == selected_date
+                temp_filtered = filtered_df[mask]
+                
+                # If we have matching data, use it
+                if not temp_filtered.empty:
+                    filtered_df = temp_filtered
+                    found_matching_data = True
+                    break
+                    
+            except Exception:
+                continue
+        
+        # Return filtered data if found, otherwise empty DataFrame
+        return filtered_df if found_matching_data else pd.DataFrame(columns=df.columns)
+    
+    def get_filtered_dashboard_data(self, section: str, period: str = "daily") -> pd.DataFrame:
+        """Get the same filtered data that sub-dashboards use."""
+        import pandas as pd
+        
+        try:
+            # Load the raw data
+            result = self.auto_load_excel_file(section, period)
+            if not result or result.get("df") is None:
+                return pd.DataFrame()
+            
+            df = result["df"]
+            
+            # Apply the same filtering logic as sub-dashboards
+            from src.data_loader import sort_dataframe_by_date, format_dataframe_dates
+            
+            # Sort by date columns (latest to oldest) - same as sub-dashboards
+            df = sort_dataframe_by_date(df, ascending=False)
+            
+            # Apply standardized date formatting - same as sub-dashboards
+            df = format_dataframe_dates(df)
+            
+            # Filter by selected date only - same as sub-dashboards
+            df = self.filter_data_by_selected_date(df)
+            
+            return df
+        except Exception as e:
+            st.error(f"❌ Error in get_filtered_dashboard_data: {str(e)}")
+            import traceback
+            st.write(f"Traceback: {traceback.format_exc()}")
+            return pd.DataFrame()
+
+    def calculate_date_based_metrics(self) -> Dict[str, Any]:
+        """Calculate summary metrics based on the same filtered data used by sub-dashboards."""
+        from datetime import datetime, timedelta
+        import numpy as np
+        import pandas as pd
+        
+        # Get selected date directly from session state to ensure it's current
+        if 'selected_date' in st.session_state:
+            selected_date = st.session_state.selected_date
+        else:
+            # Fallback to most recent weekday
+            from datetime import datetime
+            recent_date_str = self.get_most_recent_weekday_date()
+            if recent_date_str != "No recent data":
+                selected_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date()
+            else:
+                selected_date = datetime.now().date()
+        
+        selected_date_str = selected_date.strftime('%Y-%m-%d')
+        
+        metrics = {
+            "total_errors": "Loading...",
+            "error_change": "",
+            "active_processes": "Loading...", 
+            "process_change": "",
+            "system_health": "Loading...",
+            "health_change": "",
+            "data_freshness": "Loading...",
+            "freshness_indicator": "",
+            "user_impact": "Loading...",
+            "user_impact_change": ""
+        }
+        
+        try:
+            # Get filtered error data - same as sub-dashboards
+            filtered_errors = self.get_filtered_dashboard_data("error_counts", "daily")
+            
+            if not filtered_errors.empty:
+                # Count total error records for selected date
+                total_errors = len(filtered_errors)
+                metrics["total_errors"] = f"{total_errors:,}"
+                
+                # Calculate sum of error counts if there are numeric columns
+                numeric_cols = filtered_errors.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 0:
+                    # Exclude obvious non-error columns
+                    error_cols = [col for col in numeric_cols if not any(skip in col.lower() for skip in ['id', 'index', 'year', 'month', 'day'])]
+                    if error_cols:
+                        total_error_count = filtered_errors[error_cols].sum().sum()
+                        metrics["total_errors"] = f"{int(total_error_count):,}" if total_error_count > total_errors else f"{total_errors:,}"
+                
+                metrics["error_change"] = "📊"  # Show data indicator instead of comparison
+            else:
+                metrics["total_errors"] = "0"
+                metrics["error_change"] = "📊"
+            
+            # Get filtered batch data - same as sub-dashboards
+            filtered_batch = self.get_filtered_dashboard_data("batch_status", "daily")
+                
+            if not filtered_batch.empty:
+                active_processes = len(filtered_batch)
+                metrics["active_processes"] = f"{active_processes:,}"
+                
+                # Calculate success rate for system health
+                success_indicators = ['success', 'complete', 'ok', 'pass', 'good']
+                error_indicators = ['error', 'fail', 'abort', 'timeout', 'bad']
+                
+                # Check for status columns
+                status_cols = [col for col in filtered_batch.columns if 'status' in col.lower()]
+                
+                if status_cols:
+                    status_col = status_cols[0]
+                    success_count = 0
+                    error_count = 0
+                    
+                    for _, row in filtered_batch.iterrows():
+                        status_val = str(row[status_col]).lower()
+                        if any(indicator in status_val for indicator in success_indicators):
+                            success_count += 1
+                        elif any(indicator in status_val for indicator in error_indicators):
+                            error_count += 1
+                    
+                    total_with_status = success_count + error_count
+                    if total_with_status > 0:
+                        success_rate = (success_count / total_with_status) * 100
+                        metrics["system_health"] = f"{success_rate:.0f}%"
+                        
+                        if success_rate >= 95:
+                            metrics["health_change"] = "✅"
+                        elif success_rate >= 80:
+                            metrics["health_change"] = "⚠️"
+                        else:
+                            metrics["health_change"] = "🔴"
+                    else:
+                        metrics["system_health"] = "Unknown"
+                        metrics["health_change"] = "❓"
+                else:
+                    metrics["system_health"] = "N/A"
+                    metrics["health_change"] = "❓"
+                        
+                metrics["process_change"] = "📊"
+            else:
+                metrics["active_processes"] = "0"
+                metrics["system_health"] = "No Data"
+                metrics["health_change"] = "❓"
+            
+            # Get filtered user impact data - same as sub-dashboards
+            filtered_user_impact = self.get_filtered_dashboard_data("user_impact", "daily")
+            
+            if not filtered_user_impact.empty:
+                # Count affected users/records
+                user_impact_count = len(filtered_user_impact)
+                
+                # Look for numeric columns that might indicate impact volume
+                numeric_cols = filtered_user_impact.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 0:
+                    # Exclude obvious non-impact columns
+                    impact_cols = [col for col in numeric_cols if not any(skip in col.lower() for skip in ['id', 'index', 'year', 'month', 'day'])]
+                    if impact_cols:
+                        total_impact = filtered_user_impact[impact_cols].sum().sum()
+                        if total_impact > user_impact_count:
+                            user_impact_count = int(total_impact)
+                
+                # Add user impact to metrics (replace one of the existing metrics or add as 5th metric)
+                metrics["user_impact"] = f"{user_impact_count:,}"
+                metrics["user_impact_change"] = "📊"
+            else:
+                metrics["user_impact"] = "0"
+                metrics["user_impact_change"] = "📊"
+            
+            # Data freshness indicator
+            recent_date_str = self.get_most_recent_weekday_date()
+            if recent_date_str != "No recent data":
+                default_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date()
+                if selected_date == default_date:
+                    metrics["data_freshness"] = "Latest"
+                    metrics["freshness_indicator"] = "🟢"
+                else:
+                    days_old = (default_date - selected_date).days
+                    metrics["data_freshness"] = f"{days_old}d ago"
+                    if days_old <= 1:
+                        metrics["freshness_indicator"] = "🟡"
+                    elif days_old <= 7:
+                        metrics["freshness_indicator"] = "🟠"
+                    else:
+                        metrics["freshness_indicator"] = "🔴"
+            else:
+                metrics["data_freshness"] = "Unknown"
+                metrics["freshness_indicator"] = "❓"
+                
+        except Exception as e:
+            # If there are any errors, show safe defaults
+            st.error(f"🚨 Error in summary metrics calculation: {str(e)}")
+            st.write(f"🔍 Exception details: {type(e).__name__}")
+            import traceback
+            st.write(f"🔍 Traceback: {traceback.format_exc()}")
+            metrics = {
+                "total_errors": "Error",
+                "error_change": "",
+                "active_processes": "Error",
+                "process_change": "",
+                "system_health": "Error", 
+                "health_change": "",
+                "data_freshness": "Error",
+                "freshness_indicator": "❓",
+                "user_impact": "Error",
+                "user_impact_change": ""
+            }
+        
+        return metrics
     
     def get_target_business_date(self):
         """Get the target business date (sysdate-1) as a datetime object."""
@@ -4432,7 +5357,7 @@ class MonitoringDashboard:
             </div>
             """, unsafe_allow_html=True)
             
-            # Optional: Show available dates for debugging (in expander)
+            # Show available dates 
             available_sheets = self._get_available_upload_status_sheets()
             if available_sheets:
                 with st.expander("🔍 View Available Dates", expanded=False):
@@ -4458,14 +5383,6 @@ class MonitoringDashboard:
         if difference_columns:
             # Create a copy for styling
             display_df = upload_status_formatted.copy()
-            
-            # Option to show debug info
-            with st.expander("🔍 Debug Difference Detection", expanded=False):
-                st.info(f"🔍 Detected difference columns: {difference_columns}")
-                for col in difference_columns:
-                    if col in display_df.columns:
-                        sample_values = display_df[col].head(5).tolist()
-                        st.write(f"📊 Sample values in '{col}': {sample_values}")
             
             # Function to highlight entire row where difference > 0
             def highlight_difference_rows(row):
@@ -4956,31 +5873,6 @@ class MonitoringDashboard:
                 break  # Stop after finding the main target column
         
         if connections_columns:
-            # Option to show debug info
-            with st.expander("🔍 Debug Connections Detection", expanded=False):
-                st.info(f"🔍 Detected connections columns: {connections_columns}")
-                if connections_col:
-                    st.success(f"✅ Found connections column: '{connections_col}'")
-                
-                st.write("📋 All columns in dataset:", df.columns.tolist())
-                
-                # Show sample connections values for debugging
-                for col in connections_columns:
-                    if col in df.columns:
-                        sample_values = df[col].head(5).tolist()
-                        st.write(f"📊 Sample values in '{col}': {sample_values}")
-                        
-                # Manual column selection for testing
-                st.write("🎯 Manual Override:")
-                manual_col = st.selectbox(
-                    "Select column to apply connections highlighting:",
-                    ["None"] + df.columns.tolist(),
-                    key="manual_connections_col"
-                )
-                if manual_col != "None":
-                    connections_columns = [manual_col]
-                    st.info(f"Using manual selection: {manual_col}")
-            
             # Create a copy of the dataframe for styling
             display_df = df.copy()
             
@@ -5692,7 +6584,6 @@ class MonitoringDashboard:
             # Skip obvious non-date columns with more specific patterns
             non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread']
             if any(keyword in col_lower for keyword in non_date_keywords):
-                st.write(f"🔍 DEBUG PERIOD FILTER: Skipping '{col}' - contains non-date keyword")
                 continue
                 
             if any(keyword in col_lower for keyword in ['date', 'time', 'day', 'month', 'year']):
@@ -6050,22 +6941,37 @@ class MonitoringDashboard:
             if 'selected_period' not in st.session_state:
                 st.session_state.selected_period = 'daily'
             
-            # Render navigation FIRST to handle section changes
-            nav_result = self.render_navigation_menu()
-            
-            # Get selections from session state AFTER navigation is processed
+            # Get selections from session state 
             selected_section = st.session_state.get('selected_section')
             selected_subsection = st.session_state.get('selected_subsection')
             
-            # Handle Summary section separately (no data loading needed)
+            # If no section is selected, default to summary (home page)
+            if not selected_section:
+                selected_section = 'summary'
+                st.session_state.selected_section = 'summary'
+            
+            # Add breadcrumb navigation at the top of main content (only if not on summary page)
+            if selected_section != 'summary':
+                self.render_breadcrumb_navigation(selected_section, selected_subsection)
+            
+            # Handle Summary section as home page (no data loading needed)
             if selected_section == 'summary':
-                self.render_summary_content(None, None)
+                self.render_summary_home_page()
                 return
             
             # Check if we should load data (either has subsection OR is a section that loads data directly)
             sections_with_direct_data = ['prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
                                        'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime',
                                        'uat_batch_status', 'prd_batch_status']  # Sections that load data without subsections
+            
+            # Sections that need subsection selection first
+            sections_requiring_subsections = ['batch_status', 'daily_exceptions', 'benefit_issuance', 'miscellaneous_bridges', 'correspondence_tango']
+            
+            # Sections with single subsections - auto-select the subsection
+            single_subsection_mappings = {
+                'error_counts': 'Daily 100 Error Counts',
+                'user_impact': 'Daily User Impact Status'
+            }
             # Check if we need to load data for sections that have data viewing enabled
             data_viewing_sections = ['mass_update', 'interfaces', 'hung_threads', 'extra_batch_connections']
             section_wants_data = any([
@@ -6092,7 +6998,7 @@ class MonitoringDashboard:
                         
                         if df is not None and not df.empty:
                             # Render main content with the loaded data
-                            self.render_main_content_with_data(df, nav_result)
+                            self.render_main_content_with_data(df, {})
                         elif df is not None and df.empty:
                             st.warning("The loaded data is empty. Please check your Excel file.")
                         else:
@@ -6101,12 +7007,46 @@ class MonitoringDashboard:
                         # No file found - call render function with empty dataframe for graceful handling
                         import pandas as pd
                         empty_df = pd.DataFrame()
-                        self.render_main_content_with_data(empty_df, nav_result)
+                        self.render_main_content_with_data(empty_df, {})
                 except Exception as e:
                     st.error(f"Error loading data: {str(e)}")
             else:
-                # Show navigation and placeholder when no subsection selected
-                self.render_content_placeholder()
+                # Handle sections that need subsection selection
+                if selected_section in sections_requiring_subsections:
+                    # Show subsection selection page
+                    self.render_subsection_selection_page(selected_section)
+                elif selected_section in single_subsection_mappings:
+                    # Auto-select the single subsection and load data
+                    auto_subsection = single_subsection_mappings[selected_section]
+                    st.session_state.selected_subsection = auto_subsection
+                    
+                    try:
+                        # Auto-detect and load Excel files with the selected subsection
+                        file_config = self.auto_load_excel_file(
+                            section=selected_section,
+                            period=st.session_state.get('selected_period', 'daily'),
+                            subsection=auto_subsection
+                        )
+                        
+                        if file_config:
+                            # Load data automatically
+                            df = self.load_data(file_config)
+                            
+                            if df is not None and not df.empty:
+                                # Render main content with the loaded data
+                                self.render_main_content_with_data(df, {})
+                            elif df is not None and df.empty:
+                                st.warning(f"The loaded data for {auto_subsection} is empty. Please check your Excel file.")
+                            else:
+                                st.error(f"Failed to load the Excel file for {auto_subsection}. Please check the file format.")
+                        else:
+                            # No file found - show message
+                            st.warning(f"No data file found for {auto_subsection}. Please ensure the Excel file exists in the monitoring data folder.")
+                    except Exception as e:
+                        st.error(f"Error loading data for {auto_subsection}: {str(e)}")
+                else:
+                    # For any remaining sections that don't have specific handling
+                    st.info("This section is under development. Please navigate back to the home page and select another dashboard section.")
             
             # Handle case where file_config is None
             if False:
