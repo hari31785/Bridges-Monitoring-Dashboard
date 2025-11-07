@@ -11,6 +11,46 @@ import numpy as np
 from .config import config
 
 
+def clean_empty_rows(df):
+    """
+    Ultra-aggressive empty row removal for components module.
+    """
+    if df is None or len(df) == 0:
+        return df
+    
+    # Remove completely empty rows
+    df_clean = df.dropna(how='all')
+    
+    if len(df_clean) == 0:
+        return df_clean
+    
+    # Ultra-aggressive empty detection
+    def is_completely_empty(val):
+        if pd.isna(val) or val is None:
+            return True
+        
+        str_val = str(val).strip().lower()
+        empty_values = {
+            '', 'none', 'null', 'nan', 'n/a', 'na', '#n/a', '#na', 
+            'undefined', '0', '0.0', '0.00', '0.000', 'false', 'f',
+            ' ', '\t', '\n', '\r'
+        }
+        
+        return str_val in empty_values or str_val.isspace() or len(str_val) == 0
+    
+    # Remove rows where ALL values are empty
+    mask = df_clean.apply(
+        lambda row: any(not is_completely_empty(val) for val in row), axis=1
+    )
+    df_clean = df_clean[mask]
+    
+    # Reset index
+    if len(df_clean) > 0:
+        df_clean = df_clean.reset_index(drop=True)
+    
+    return df_clean
+
+
 class ChartComponent:
     """Component for creating various chart types."""
     
@@ -210,6 +250,8 @@ class TableComponent:
         
         try:
             from main import sort_dataframe_by_date, format_dataframe_dates, format_percentage_columns
+            # Remove empty rows first using local function
+            df = clean_empty_rows(df)
             # Sort by date columns (latest to oldest)
             df = sort_dataframe_by_date(df, ascending=False)
             # Apply date formatting
@@ -268,9 +310,13 @@ class TableComponent:
         # Display the dataframe
         if len(df) > max_rows:
             st.warning(f"Showing first {max_rows} rows of {len(df)} total rows")
-            st.dataframe(df.head(max_rows), use_container_width=True, height=display_height, hide_index=True, **kwargs)
+            # Additional cleanup right before display
+            display_df = clean_empty_rows(df.head(max_rows))
+            st.dataframe(display_df, use_container_width=True, hide_index=True, **kwargs)
         else:
-            st.dataframe(df, use_container_width=True, height=display_height, hide_index=True, **kwargs)
+            # Additional cleanup right before display
+            display_df = clean_empty_rows(df)
+            st.dataframe(display_df, use_container_width=True, hide_index=True, **kwargs)
     
     @staticmethod
     def summary_stats(df: pd.DataFrame, title: str = "Summary Statistics") -> None:
