@@ -4,6 +4,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import sys
+import os
 from pathlib import Path
 import logging
 from typing import Optional, Dict, Any, List
@@ -150,254 +151,6 @@ def format_date_to_standard(date_input):
     except Exception:
         # If any error occurs, return original value
         return date_input
-
-
-def sort_dataframe_by_date(df, ascending=False):
-    """
-    Sort DataFrame by date columns (latest to oldest by default).
-    
-    Args:
-        df: pandas DataFrame
-        ascending: If False (default), sorts latest to oldest
-        
-    Returns:
-        DataFrame sorted by date columns
-    """
-    if df is None or len(df) == 0:
-        return df
-    
-    df_sorted = df.copy()
-    
-    # Identify potential date columns
-    date_columns = []
-    
-    for col in df_sorted.columns:
-        col_lower = col.lower()
-        
-        # Skip obvious non-date columns
-        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'runtime']
-        if any(keyword in col_lower for keyword in non_date_keywords):
-            continue
-            
-        # Check if column name suggests it's a date
-        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp', 'week of']) or \
-           ('month' in col_lower and 'year' in col_lower):
-            # Exclude columns that are clearly not dates (like processing times)
-            if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
-                continue
-            # Handle special case of "Week Of" columns with date ranges
-            if 'week of' in col_lower:
-                try:
-                    # Extract the end date from date ranges like "29-SEP To 03-OCT"
-                    def extract_end_date(date_range_str):
-                        if pd.isna(date_range_str):
-                            return pd.NaT
-                        str_val = str(date_range_str).strip()
-                        # Look for patterns like "DD-MMM To DD-MMM" or "DD-MMM-YYYY To DD-MMM-YYYY"
-                        if ' to ' in str_val.lower():
-                            parts = str_val.split(' To ')  # Keep original case
-                            if len(parts) == 2:
-                                end_date_str = parts[1].strip()
-                                # Add current year if not present
-                                if len(end_date_str.split('-')) == 2:  # Format: DD-MMM
-                                    from datetime import datetime
-                                    current_year = datetime.now().year
-                                    end_date_str = f"{end_date_str}-{current_year}"
-                                # Try to parse the end date
-                                try:
-                                    return pd.to_datetime(end_date_str, format='%d-%b-%Y', errors='coerce')
-                                except:
-                                    # Fallback to general parsing
-                                    try:
-                                        return pd.to_datetime(end_date_str, errors='coerce')
-                                    except:
-                                        return pd.NaT
-                        return pd.NaT
-                    
-                    # Create a sortable date column based on end dates
-                    df_sorted[col + '_sortable'] = df_sorted[col].apply(extract_end_date)
-                    date_columns.append(col + '_sortable')
-                except:
-                    pass
-            else:
-                # Regular date column processing
-                try:
-                    df_sorted[col] = pd.to_datetime(df_sorted[col], errors='coerce')
-                    date_columns.append(col)
-                except:
-                    pass
-        else:
-            # Check if column content looks like dates
-            sample_values = df_sorted[col].dropna().head(3)
-            if len(sample_values) > 0:
-                is_date_column = False
-                for val in sample_values:
-                    val_str = str(val).strip()
-                    # More specific date pattern matching - avoid simple numbers
-                    if (re.match(r'\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}', val_str) or  # MM/DD/YYYY or DD/MM/YYYY
-                        re.match(r'\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}', val_str) or  # YYYY/MM/DD
-                        re.match(r'\d{1,2} \w{3,} \d{4}', val_str) or            # DD Month YYYY
-                        re.match(r'\w{3,} \d{1,2}, \d{4}', val_str)) and \
-                       not val_str.isdigit():  # Exclude pure numbers
-                        is_date_column = True
-                        break
-                if is_date_column:
-                    try:
-                        df_sorted[col] = pd.to_datetime(df_sorted[col], errors='coerce')
-                        date_columns.append(col)
-                    except:
-                        pass
-    
-    # Sort by date columns (primary sort by first date column found)
-    if date_columns:
-        # Sort by all date columns, with primary column first
-        df_sorted = df_sorted.sort_values(by=date_columns, ascending=ascending, na_position='last')
-    
-    # Remove temporary sortable columns that were created for sorting
-    columns_to_remove = [col for col in df_sorted.columns if col.endswith('_sortable')]
-    if columns_to_remove:
-        df_sorted = df_sorted.drop(columns=columns_to_remove)
-    
-    return df_sorted
-
-
-def format_dataframe_dates(df):
-    """
-    Apply date formatting to all date columns in a DataFrame.
-    
-    Args:
-        df: pandas DataFrame
-        
-    Returns:
-        DataFrame with formatted dates
-    """
-    if df is None or len(df) == 0:
-        return df
-    
-    df_formatted = df.copy()
-    
-    # Identify potential date columns
-    date_columns = []
-    
-    for col in df_formatted.columns:
-        col_lower = col.lower()
-        
-        # Skip obvious non-date columns with more specific patterns
-        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread', 'runtime']
-        if any(keyword in col_lower for keyword in non_date_keywords):
-            continue
-            
-        # Check if column name suggests it's a date
-        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']):
-            # Exclude columns that are clearly not dates (like processing times)
-            if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
-                continue
-            date_columns.append(col)
-        # Handle Month & Year columns separately with custom formatting
-        elif 'month' in col_lower and 'year' in col_lower:
-            date_columns.append(col)
-        else:
-            # Check if column content looks like dates (sample first few non-null values)
-            sample_values = df_formatted[col].dropna().head(3)
-            if len(sample_values) > 0:
-                is_date_column = False
-                for val in sample_values:
-                    val_str = str(val).strip()
-                    # More specific date pattern matching - avoid simple numbers
-                    if (re.match(r'\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}', val_str) or  # MM/DD/YYYY or DD/MM/YYYY
-                        re.match(r'\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}', val_str) or  # YYYY/MM/DD
-                        re.match(r'\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d{1,2}:\d{1,2}', val_str) or  # YYYY-MM-DD HH:MM:SS
-                        re.match(r'\d{1,2} \w{3,} \d{4}', val_str) or            # DD Month YYYY
-                        re.match(r'\w{3,} \d{1,2}, \d{4}', val_str)) and \
-                       not val_str.isdigit():  # Exclude pure numbers
-                        is_date_column = True
-                        break
-                if is_date_column:
-                    date_columns.append(col)
-                    break
-    
-    # Format identified date columns
-    for col in date_columns:
-        # Special formatting for Month & Year columns to show Mon-YYYY format
-        if 'month' in col.lower() and 'year' in col.lower():
-            df_formatted[col] = df_formatted[col].apply(format_date_to_month_year)
-        else:
-            df_formatted[col] = df_formatted[col].apply(format_date_to_standard)
-    
-    return df_formatted
-
-def format_percentage_columns(df):
-    """
-    Format percentage columns appropriately:
-    - Columns with "%" symbol: Convert decimals to percentages (0.04 → 4%)
-    - Other percentage columns: Display as numbers with 2 decimal places
-    
-    Args:
-        df: DataFrame to format
-        
-    Returns:
-        DataFrame with formatted percentage columns
-    """
-    df_formatted = df.copy()
-    
-    # List of keywords that typically indicate percentage columns (non-% symbol)
-    percentage_keywords = [
-        'percent', 'percentage', 'rate', 'ratio', 'variance', 'var',
-        'pct', 'proportion', 'share', 'yield', 'efficiency', 'utilization',
-        'completion', 'success', 'failure', 'error rate', 'accuracy'
-    ]
-    
-    for col in df_formatted.columns:
-        col_lower = col.lower()
-        
-        # Check if column name contains the "%" symbol - these should show as percentages
-        has_percent_symbol = '%' in col
-        
-        # Check if column name contains other percentage-related keywords
-        is_percentage_col = any(keyword in col_lower for keyword in percentage_keywords)
-        
-        if has_percent_symbol or is_percentage_col:
-            try:
-                # Check if column contains data that looks like percentages
-                sample_values = df_formatted[col].dropna().head(10)
-                if len(sample_values) > 0:
-                    # Skip variance columns that contain text values like "Above 10%" or "Below 10%"
-                    if 'variance' in col_lower:
-                        # Check if variance column contains text values
-                        first_non_null = sample_values.iloc[0] if len(sample_values) > 0 else None
-                        if first_non_null is not None and isinstance(first_non_null, str):
-                            if any(text in str(first_non_null).lower() for text in ['above', 'below', '%']):
-                                continue  # Skip formatting this variance column
-                    
-                    # Convert to numeric first
-                    numeric_series = pd.to_numeric(df_formatted[col], errors='coerce')
-                    
-                    if has_percent_symbol:
-                        # For columns with "%" symbol, display values exactly as they appear in the source data
-                        # Only add the % symbol if not already present, preserve original precision
-                        def format_percentage_value(x):
-                            if pd.isna(x):
-                                return ""
-                            # Convert to string to preserve original precision from Excel
-                            str_val = str(x)
-                            # If the original value already contains %, return as-is
-                            if '%' in str_val:
-                                return str_val
-                            # Otherwise, just add % symbol without changing the number
-                            return f"{x}%"
-                        
-                        # Use original values, not the numeric_series which might alter precision
-                        df_formatted[col] = df_formatted[col].apply(format_percentage_value)
-                    else:
-                        # For other percentage-related columns, format as number with 2 decimal places
-                        df_formatted[col] = numeric_series.apply(
-                            lambda x: f"{x:.2f}" if pd.notna(x) else ""
-                        )
-            except (ValueError, TypeError):
-                # If conversion fails, leave as is
-                continue
-    
-    return df_formatted
 
 
 def remove_empty_rows(df):
@@ -649,6 +402,254 @@ def display_clean_dataframe(df, **kwargs):
             st.dataframe(clean_df, **kwargs)
     else:
         st.info("No meaningful data available for display after aggressive cleaning.")
+
+
+def sort_dataframe_by_date(df, ascending=False):
+    """
+    Sort DataFrame by date columns (latest to oldest by default).
+    
+    Args:
+        df: pandas DataFrame
+        ascending: If False (default), sorts latest to oldest
+        
+    Returns:
+        DataFrame sorted by date columns
+    """
+    if df is None or len(df) == 0:
+        return df
+    
+    df_sorted = df.copy()
+    
+    # Identify potential date columns
+    date_columns = []
+    
+    for col in df_sorted.columns:
+        col_lower = col.lower()
+        
+        # Skip obvious non-date columns
+        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'runtime']
+        if any(keyword in col_lower for keyword in non_date_keywords):
+            continue
+            
+        # Check if column name suggests it's a date
+        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp', 'week of']) or \
+           ('month' in col_lower and 'year' in col_lower):
+            # Exclude columns that are clearly not dates (like processing times)
+            if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
+                continue
+            # Handle special case of "Week Of" columns with date ranges
+            if 'week of' in col_lower:
+                try:
+                    # Extract the end date from date ranges like "29-SEP To 03-OCT"
+                    def extract_end_date(date_range_str):
+                        if pd.isna(date_range_str):
+                            return pd.NaT
+                        str_val = str(date_range_str).strip()
+                        # Look for patterns like "DD-MMM To DD-MMM" or "DD-MMM-YYYY To DD-MMM-YYYY"
+                        if ' to ' in str_val.lower():
+                            parts = str_val.split(' To ')  # Keep original case
+                            if len(parts) == 2:
+                                end_date_str = parts[1].strip()
+                                # Add current year if not present
+                                if len(end_date_str.split('-')) == 2:  # Format: DD-MMM
+                                    from datetime import datetime
+                                    current_year = datetime.now().year
+                                    end_date_str = f"{end_date_str}-{current_year}"
+                                # Try to parse the end date
+                                try:
+                                    return pd.to_datetime(end_date_str, format='%d-%b-%Y', errors='coerce')
+                                except:
+                                    # Fallback to general parsing
+                                    try:
+                                        return pd.to_datetime(end_date_str, errors='coerce')
+                                    except:
+                                        return pd.NaT
+                        return pd.NaT
+                    
+                    # Create a sortable date column based on end dates
+                    df_sorted[col + '_sortable'] = df_sorted[col].apply(extract_end_date)
+                    date_columns.append(col + '_sortable')
+                except:
+                    pass
+            else:
+                # Regular date column processing
+                try:
+                    df_sorted[col] = pd.to_datetime(df_sorted[col], errors='coerce')
+                    date_columns.append(col)
+                except:
+                    pass
+        else:
+            # Check if column content looks like dates
+            sample_values = df_sorted[col].dropna().head(3)
+            if len(sample_values) > 0:
+                is_date_column = False
+                for val in sample_values:
+                    val_str = str(val).strip()
+                    # More specific date pattern matching - avoid simple numbers
+                    if (re.match(r'\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}', val_str) or  # MM/DD/YYYY or DD/MM/YYYY
+                        re.match(r'\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}', val_str) or  # YYYY/MM/DD
+                        re.match(r'\d{1,2} \w{3,} \d{4}', val_str) or            # DD Month YYYY
+                        re.match(r'\w{3,} \d{1,2}, \d{4}', val_str)) and \
+                       not val_str.isdigit():  # Exclude pure numbers
+                        is_date_column = True
+                        break
+                if is_date_column:
+                    try:
+                        df_sorted[col] = pd.to_datetime(df_sorted[col], errors='coerce')
+                        date_columns.append(col)
+                    except:
+                        pass
+    
+    # Sort by date columns (primary sort by first date column found)
+    if date_columns:
+        # Sort by all date columns, with primary column first
+        df_sorted = df_sorted.sort_values(by=date_columns, ascending=ascending, na_position='last')
+    
+    # Remove temporary sortable columns that were created for sorting
+    columns_to_remove = [col for col in df_sorted.columns if col.endswith('_sortable')]
+    if columns_to_remove:
+        df_sorted = df_sorted.drop(columns=columns_to_remove)
+    
+    return df_sorted
+
+
+def format_dataframe_dates(df):
+    """
+    Apply date formatting to all date columns in a DataFrame.
+    
+    Args:
+        df: pandas DataFrame
+        
+    Returns:
+        DataFrame with formatted dates
+    """
+    if df is None or len(df) == 0:
+        return df
+    
+    df_formatted = df.copy()
+    
+    # Identify potential date columns
+    date_columns = []
+    
+    for col in df_formatted.columns:
+        col_lower = col.lower()
+        
+        # Skip obvious non-date columns with more specific patterns
+        non_date_keywords = ['error', 'count', 'total', 'number', 'qty', 'quantity', 'amount', 'value', 'rate', 'percent', 'id', 'timeout', 'session', 'connection', 'batch', 'thread', 'runtime']
+        if any(keyword in col_lower for keyword in non_date_keywords):
+            continue
+            
+        # Check if column name suggests it's a date
+        if any(keyword in col_lower for keyword in ['date', 'time', 'created', 'updated', 'modified', 'timestamp']):
+            # Exclude columns that are clearly not dates (like processing times)
+            if 'processing' in col_lower or 'load' in col_lower or 'staging' in col_lower:
+                continue
+            date_columns.append(col)
+        # Handle Month & Year columns separately with custom formatting
+        elif 'month' in col_lower and 'year' in col_lower:
+            date_columns.append(col)
+        else:
+            # Check if column content looks like dates (sample first few non-null values)
+            sample_values = df_formatted[col].dropna().head(3)
+            if len(sample_values) > 0:
+                is_date_column = False
+                for val in sample_values:
+                    val_str = str(val).strip()
+                    # More specific date pattern matching - avoid simple numbers
+                    if (re.match(r'\d{1,2}[-/\.]\d{1,2}[-/\.]\d{4}', val_str) or  # MM/DD/YYYY or DD/MM/YYYY
+                        re.match(r'\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}', val_str) or  # YYYY/MM/DD
+                        re.match(r'\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d{1,2}:\d{1,2}', val_str) or  # YYYY-MM-DD HH:MM:SS
+                        re.match(r'\d{1,2} \w{3,} \d{4}', val_str) or            # DD Month YYYY
+                        re.match(r'\w{3,} \d{1,2}, \d{4}', val_str)) and \
+                       not val_str.isdigit():  # Exclude pure numbers
+                        is_date_column = True
+                        break
+                if is_date_column:
+                    date_columns.append(col)
+                    break
+    
+    # Format identified date columns
+    for col in date_columns:
+        # Special formatting for Month & Year columns to show Mon-YYYY format
+        if 'month' in col.lower() and 'year' in col.lower():
+            df_formatted[col] = df_formatted[col].apply(format_date_to_month_year)
+        else:
+            df_formatted[col] = df_formatted[col].apply(format_date_to_standard)
+    
+    return df_formatted
+
+def format_percentage_columns(df):
+    """
+    Format percentage columns appropriately:
+    - Columns with "%" symbol: Convert decimals to percentages (0.04 → 4%)
+    - Other percentage columns: Display as numbers with 2 decimal places
+    
+    Args:
+        df: DataFrame to format
+        
+    Returns:
+        DataFrame with formatted percentage columns
+    """
+    df_formatted = df.copy()
+    
+    # List of keywords that typically indicate percentage columns (non-% symbol)
+    percentage_keywords = [
+        'percent', 'percentage', 'rate', 'ratio', 'variance', 'var',
+        'pct', 'proportion', 'share', 'yield', 'efficiency', 'utilization',
+        'completion', 'success', 'failure', 'error rate', 'accuracy'
+    ]
+    
+    for col in df_formatted.columns:
+        col_lower = col.lower()
+        
+        # Check if column name contains the "%" symbol - these should show as percentages
+        has_percent_symbol = '%' in col
+        
+        # Check if column name contains other percentage-related keywords
+        is_percentage_col = any(keyword in col_lower for keyword in percentage_keywords)
+        
+        if has_percent_symbol or is_percentage_col:
+            try:
+                # Check if column contains data that looks like percentages
+                sample_values = df_formatted[col].dropna().head(10)
+                if len(sample_values) > 0:
+                    # Skip variance columns that contain text values like "Above 10%" or "Below 10%"
+                    if 'variance' in col_lower:
+                        # Check if variance column contains text values
+                        first_non_null = sample_values.iloc[0] if len(sample_values) > 0 else None
+                        if first_non_null is not None and isinstance(first_non_null, str):
+                            if any(text in str(first_non_null).lower() for text in ['above', 'below', '%']):
+                                continue  # Skip formatting this variance column
+                    
+                    # Convert to numeric first
+                    numeric_series = pd.to_numeric(df_formatted[col], errors='coerce')
+                    
+                    if has_percent_symbol:
+                        # For columns with "%" symbol, display values exactly as they appear in the source data
+                        # Only add the % symbol if not already present, preserve original precision
+                        def format_percentage_value(x):
+                            if pd.isna(x):
+                                return ""
+                            # Convert to string to preserve original precision from Excel
+                            str_val = str(x)
+                            # If the original value already contains %, return as-is
+                            if '%' in str_val:
+                                return str_val
+                            # Otherwise, just add % symbol without changing the number
+                            return f"{x}%"
+                        
+                        # Use original values, not the numeric_series which might alter precision
+                        df_formatted[col] = df_formatted[col].apply(format_percentage_value)
+                    else:
+                        # For other percentage-related columns, format as number with 2 decimal places
+                        df_formatted[col] = numeric_series.apply(
+                            lambda x: f"{x:.2f}" if pd.notna(x) else ""
+                        )
+            except (ValueError, TypeError):
+                # If conversion fails, leave as is
+                continue
+    
+    return df_formatted
 
 
 def filter_data_to_recent_weeks(df, date_column=None, weeks_to_show=None):
@@ -982,40 +983,6 @@ class MonitoringDashboard:
                                 "subsection": subsection
                             }
         
-        elif section == "online_ora_errors":
-            ora_errors_path = monitoring_data_path / "ORA Errors"
-            
-            if ora_errors_path.exists():
-                # Look for Online.xlsx file
-                for ext in ['.xlsx', '.xls']:
-                    file_path = ora_errors_path / f"Online{ext}"
-                    if file_path.exists() and not file_path.name.startswith('~$'):
-                        return {
-                            "data_source_type": "excel",
-                            "workspace_file": file_path,
-                            "uploaded_file": None,
-                            "use_default_file": False,
-                            "section": section,
-                            "subsection": "Online"
-                        }
-        
-        elif section == "batch_ora_errors":
-            ora_errors_path = monitoring_data_path / "ORA Errors"
-            
-            if ora_errors_path.exists():
-                # Look for Batch.xlsx file
-                for ext in ['.xlsx', '.xls']:
-                    file_path = ora_errors_path / f"Batch{ext}"
-                    if file_path.exists() and not file_path.name.startswith('~$'):
-                        return {
-                            "data_source_type": "excel",
-                            "workspace_file": file_path,
-                            "uploaded_file": None,
-                            "use_default_file": False,
-                            "section": section,
-                            "subsection": "Batch"
-                        }
-        
         elif section == "user_impact":
             user_impact_path = monitoring_data_path / "User Impact"
             
@@ -1034,6 +1001,34 @@ class MonitoringDashboard:
                                 "section": section,
                                 "subsection": subsection
                             }
+        
+        elif section == "online_ora_errors":
+            # Look for Online.xlsx directly in ORA Errors folder
+            online_ora_file = monitoring_data_path / "ORA Errors" / "Online.xlsx"
+            
+            if online_ora_file.exists() and not online_ora_file.name.startswith('~$'):
+                return {
+                    "data_source_type": "excel",
+                    "workspace_file": online_ora_file,
+                    "uploaded_file": None,
+                    "use_default_file": False,
+                    "section": section,
+                    "subsection": "Online ORA Errors"
+                }
+        
+        elif section == "batch_ora_errors":
+            # Look for Batch.xlsx directly in ORA Errors folder
+            batch_ora_file = monitoring_data_path / "ORA Errors" / "Batch.xlsx"
+            
+            if batch_ora_file.exists() and not batch_ora_file.name.startswith('~$'):
+                return {
+                    "data_source_type": "excel",
+                    "workspace_file": batch_ora_file,
+                    "uploaded_file": None,
+                    "use_default_file": False,
+                    "section": section,
+                    "subsection": "Batch ORA Errors"
+                }
         
         elif section == "extra_batch_connections":
             extra_batch_path = monitoring_data_path / "Extra Batch Connections"
@@ -1560,34 +1555,6 @@ class MonitoringDashboard:
         
         return []
 
-    def get_online_ora_errors_files(self) -> List[str]:
-        """Get available files in ORA Errors folder for Online errors."""
-        workspace_path = Path(__file__).parent
-        ora_errors_path = workspace_path / "Monitoring Data Files" / "ORA Errors"
-        
-        if ora_errors_path.exists():
-            # Look specifically for Online files
-            for pattern in ['Online.xlsx', 'Online.xls']:
-                file_path = ora_errors_path / pattern
-                if file_path.exists() and not file_path.name.startswith('~$'):
-                    return ["Online"]
-        
-        return []
-
-    def get_batch_ora_errors_files(self) -> List[str]:
-        """Get available files in ORA Errors folder for Batch errors."""
-        workspace_path = Path(__file__).parent
-        ora_errors_path = workspace_path / "Monitoring Data Files" / "ORA Errors"
-        
-        if ora_errors_path.exists():
-            # Look specifically for Batch files
-            for pattern in ['Batch.xlsx', 'Batch.xls']:
-                file_path = ora_errors_path / pattern
-                if file_path.exists() and not file_path.name.startswith('~$'):
-                    return ["Batch"]
-        
-        return []
-
     def render_breadcrumb_navigation(self, selected_section: str = None, selected_subsection: str = None) -> None:
         """Render breadcrumb navigation for better user orientation."""
         if not selected_section or selected_section == 'summary':
@@ -1630,7 +1597,7 @@ class MonitoringDashboard:
             with col1:
                 if st.button("← Back", key="breadcrumb_back", help="Go back to previous level"):
                     # Define sections that auto-select subsections (single subsection sections)
-                    single_subsection_sections = ['error_counts', 'user_impact', 'online_ora_errors', 'batch_ora_errors']
+                    single_subsection_sections = ['error_counts', 'user_impact']
                     # Define sections that are batch status subsections
                     batch_subsections = ['uat_batch_status', 'prd_batch_status']
                     
@@ -1665,8 +1632,6 @@ class MonitoringDashboard:
             "summary": {"icon": "📋", "name": "System Summary"},
             "user_impact": {"icon": "👥", "name": "User Impact"},
             "error_counts": {"icon": "🚨", "name": "100 Error Counts"},
-            "online_ora_errors": {"icon": "💻", "name": "Online ORA Errors"},
-            "batch_ora_errors": {"icon": "📊", "name": "Batch ORA Errors"},
             "correspondence_tango": {"icon": "📧", "name": "Correspondence"},
             "benefit_issuance": {"icon": "📈", "name": "Benefit Issuance"},
             "batch_status": {"icon": "⚙️", "name": "Batch Status"},
@@ -2074,9 +2039,11 @@ class MonitoringDashboard:
         high_priority_sections = [
             {"key": "summary", "icon": "📋", "name": "System Summary", "has_subsections": False, "color": "#17a2b8", "active_color": "#138496", "priority": "overview"},
             {"key": "batch_status", "icon": "⚙️", "name": "Batch Status", "has_subsections": True, "color": "#795548", "active_color": "#5d4037", "priority": "critical"},
-            {"key": "correspondence_tango", "icon": "�", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2", "priority": "critical"},
-            {"key": "user_impact", "icon": "�", "name": "User Impact", "has_subsections": True, "color": "#4caf50", "active_color": "#388e3c", "priority": "critical"},
-            {"key": "error_counts", "icon": "�", "name": "100 Error Counts", "has_subsections": True, "color": "#ffffff", "active_color": "#f0f0f0", "priority": "critical"}
+            {"key": "correspondence_tango", "icon": "📧", "name": "Correspondence", "has_subsections": True, "color": "#2196f3", "active_color": "#1976d2", "priority": "critical"},
+            {"key": "user_impact", "icon": "👥", "name": "User Impact", "has_subsections": True, "color": "#4caf50", "active_color": "#388e3c", "priority": "critical"},
+            {"key": "error_counts", "icon": "💯", "name": "100 Error Counts", "has_subsections": True, "color": "#ffffff", "active_color": "#f0f0f0", "priority": "critical"},
+            {"key": "online_ora_errors", "icon": "🌐", "name": "Online ORA Errors", "has_subsections": False, "color": "#e91e63", "active_color": "#c2185b", "priority": "critical"},
+            {"key": "batch_ora_errors", "icon": "⚙️", "name": "Batch ORA Errors", "has_subsections": False, "color": "#ff5722", "active_color": "#e64a19", "priority": "critical"}
         ]
         
         business_intelligence_sections = [
@@ -2279,11 +2246,9 @@ class MonitoringDashboard:
                 with col1:
                     # Daily Benefit Issuance
                     st.markdown("""
-                    <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #F1F8E9; height: 180px; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <h4 style="margin: 0 0 15px 0; color: #2E7D32;">📅 Daily Issuance</h4>
-                            <p style="margin: 0; color: #4A4A4A; line-height: 1.4;">Daily FAP, FIP, and SDA benefit processing dashboards and monitoring</p>
-                        </div>
+                    <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #F1F8E9;">
+                        <h4>📅 Daily Issuance</h4>
+                        <p>Daily FAP, FIP, and SDA benefit processing dashboards</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -2294,11 +2259,9 @@ class MonitoringDashboard:
                 with col2:
                     # Weekly Benefit Issuance
                     st.markdown("""
-                    <div style="border: 2px solid #FF9800; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FFF8E1; height: 180px; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <h4 style="margin: 0 0 15px 0; color: #E65100;">📊 Weekly Issuance</h4>
-                            <p style="margin: 0; color: #4A4A4A; line-height: 1.4;">Weekly warrants, provider payments, and special program dashboards</p>
-                        </div>
+                    <div style="border: 2px solid #FF9800; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FFF8E1;">
+                        <h4>📊 Weekly Issuance</h4>
+                        <p>Weekly warrants, provider payments, and special programs</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -2309,11 +2272,9 @@ class MonitoringDashboard:
                 with col3:
                     # Monthly Benefit Issuance
                     st.markdown("""
-                    <div style="border: 2px solid #2196F3; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E3F2FD; height: 180px; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <h4 style="margin: 0 0 15px 0; color: #1565C0;">📈 Monthly Issuance</h4>
-                            <p style="margin: 0; color: #4A4A4A; line-height: 1.4;">Monthly payroll processing and summary report dashboards</p>
-                        </div>
+                    <div style="border: 2px solid #2196F3; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #E3F2FD;">
+                        <h4>📈 Monthly Issuance</h4>
+                        <p>Monthly payroll processing and summary reports</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -2516,6 +2477,52 @@ class MonitoringDashboard:
                         st.session_state.selected_subsection = "Cash Payroll"
                         st.rerun()
                     
+            
+            with col1:
+                # FAP Payments
+                st.markdown("""
+                <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: #F1F8E9;">
+                    <h5>🍯 FAP Payments</h5>
+                    <p>Daily FAP benefit issuance data</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 View FAP Payments", key="select_fap_payments", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "daily"
+                    st.session_state.selected_subsection = "FAP Payments"
+                    st.rerun()
+            
+            with col2:
+                # FIP Payments
+                st.markdown("""
+                <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: #F1F8E9;">
+                    <h5>👨‍👩‍👧‍👦 FIP Payments</h5>
+                    <p>Daily FIP EBT & Warrants data</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 View FIP Payments", key="select_fip_payments", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "daily"
+                    st.session_state.selected_subsection = "FIP Payments (EBT & Warrants)"
+                    st.rerun()
+            
+            with col3:
+                # SDA Client Payments
+                st.markdown("""
+                <div style="border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0; background-color: #F1F8E9;">
+                    <h5>🏠 SDA Client Payments</h5>
+                    <p>Daily SDA EBT & Warrants data</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📊 View SDA Client", key="select_sda_client", use_container_width=True):
+                    st.session_state.selected_section = "benefit_issuance"
+                    st.session_state.selected_period = "daily"
+                    st.session_state.selected_subsection = "SDA Client Payments (EBT & Warrants)"
+                    st.rerun()
+                    
         elif section_key == "miscellaneous_bridges":
             st.markdown("### 🎯 Select Critical Process")
             
@@ -2675,38 +2682,6 @@ class MonitoringDashboard:
             if st.button("📊 Click Here to Open Daily User Impact Dashboard", key="select_daily_user_impact", use_container_width=True):
                 st.session_state.selected_section = "user_impact"
                 st.session_state.selected_subsection = "Daily User Impact Status"
-                st.rerun()
-                
-        elif section_key == "online_ora_errors":
-            st.markdown("### 🎯 Online ORA Errors")
-            
-            # Online ORA Errors
-            st.markdown("""
-            <div style="border: 2px solid #FF9800; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #FFF3E0;">
-                <h4>💻 Online ORA Errors</h4>
-                <p>Monitor online Oracle database errors and exceptions</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if st.button("📊 Click Here to Open Online ORA Errors Dashboard", key="select_online_ora_errors", use_container_width=True):
-                st.session_state.selected_section = "online_ora_errors"
-                st.session_state.selected_subsection = "Online"
-                st.rerun()
-                
-        elif section_key == "batch_ora_errors":
-            st.markdown("### 🎯 Batch ORA Errors")
-            
-            # Batch ORA Errors
-            st.markdown("""
-            <div style="border: 2px solid #9C27B0; border-radius: 10px; padding: 20px; margin: 10px 0; background-color: #F3E5F5;">
-                <h4>📊 Batch ORA Errors</h4>
-                <p>Track batch processing Oracle database errors</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if st.button("📊 Click Here to Open Batch ORA Errors Dashboard", key="select_batch_ora_errors", use_container_width=True):
-                st.session_state.selected_section = "batch_ora_errors"
-                st.session_state.selected_subsection = "Batch"
                 st.rerun()
 
     def render_subsections(self, section_key: str, section_color: str) -> None:
@@ -3041,66 +3016,6 @@ class MonitoringDashboard:
                         
                         st.sidebar.markdown('</div>', unsafe_allow_html=True)
                     
-                    elif section_key == "online_ora_errors":
-                        # Get files from ORA Errors folder for Online
-                        available_files = self.get_online_ora_errors_files()
-                        
-                        st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
-                        
-                        if available_files:
-                            file_icons = {
-                                "Online": "💻"
-                            }
-                            
-                            # Hierarchical file buttons with tree symbols
-                            for i, file_name in enumerate(available_files):
-                                icon = file_icons.get(file_name, "📄")
-                                tree_symbol = "└─" if i == len(available_files) - 1 else "├─"
-                                
-                                if st.sidebar.button(f"　{tree_symbol} {icon} {file_name}", 
-                                                   key=f"file_online_ora_errors_{file_name}",
-                                                   help=f"Click to analyze {file_name}",
-                                                   use_container_width=True,
-                                                   type="secondary"):
-                                    st.session_state.selected_section = section_key
-                                    st.session_state.selected_subsection = file_name
-                                    st.rerun()
-
-                        else:
-                            st.sidebar.markdown('<div style="color: orange; font-size: 12px;">⚠️ No files available</div>', unsafe_allow_html=True)
-                        
-                        st.sidebar.markdown('</div>', unsafe_allow_html=True)
-                    
-                    elif section_key == "batch_ora_errors":
-                        # Get files from ORA Errors folder for Batch
-                        available_files = self.get_batch_ora_errors_files()
-                        
-                        st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
-                        
-                        if available_files:
-                            file_icons = {
-                                "Batch": "📊"
-                            }
-                            
-                            # Hierarchical file buttons with tree symbols
-                            for i, file_name in enumerate(available_files):
-                                icon = file_icons.get(file_name, "📄")
-                                tree_symbol = "└─" if i == len(available_files) - 1 else "├─"
-                                
-                                if st.sidebar.button(f"　{tree_symbol} {icon} {file_name}", 
-                                                   key=f"file_batch_ora_errors_{file_name}",
-                                                   help=f"Click to analyze {file_name}",
-                                                   use_container_width=True,
-                                                   type="secondary"):
-                                    st.session_state.selected_section = section_key
-                                    st.session_state.selected_subsection = file_name
-                                    st.rerun()
-
-                        else:
-                            st.sidebar.markdown('<div style="color: orange; font-size: 12px;">⚠️ No files available</div>', unsafe_allow_html=True)
-                        
-                        st.sidebar.markdown('</div>', unsafe_allow_html=True)
-                    
                     elif section_key == "miscellaneous_bridges":
                         # Other Critical Processes subsections
                         st.sidebar.markdown('<div style="margin-left: 15px;" class="sub-menu-container">', unsafe_allow_html=True)
@@ -3302,8 +3217,6 @@ class MonitoringDashboard:
             section_map = {
                 "correspondence_tango": "📧 Correspondence-Tango",
                 "error_counts": "🚨 100 Error Counts",
-                "online_ora_errors": "💻 Online ORA Errors",
-                "batch_ora_errors": "📊 Batch ORA Errors",
                 "user_impact": "👥 User Impact",
                 "mass_update": "🔄 Mass Update",
                 "interfaces": "🔗 Interfaces",
@@ -3945,9 +3858,6 @@ class MonitoringDashboard:
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
         
-        # Remove empty rows from the dataframe
-        df = remove_empty_rows(df)
-        
         # Apply standardized date formatting to all date columns
         df = format_dataframe_dates(df)
         
@@ -3955,8 +3865,10 @@ class MonitoringDashboard:
         original_df = df.copy()
         df = self.filter_data_by_selected_date(df)
         
-        # Note: Individual dashboard functions will handle empty data messaging
-        # Don't show duplicate message here
+        # If no data for selected date, show warning but keep empty DataFrame
+        if df.empty:
+            st.warning(f"⚠️ No data found for {selected_date.strftime('%B %d, %Y')}. Please select a different date or check data availability.")
+            # Return empty DataFrame to show no data rather than fallback to historical data
         
         # Filter data based on selected period
         filtered_by_period_df = self.filter_data_by_period(df, selected_period)
@@ -3986,18 +3898,6 @@ class MonitoringDashboard:
                 "weekly": "Weekly User Impact Dashboard",
                 "monthly": "Monthly User Impact Dashboard",
                 "yearly": "Yearly User Impact Dashboard"
-            },
-            "online_ora_errors": {
-                "daily": "Online ORA Errors Dashboard",
-                "weekly": "Online ORA Errors Dashboard",
-                "monthly": "Online ORA Errors Dashboard",
-                "yearly": "Online ORA Errors Dashboard"
-            },
-            "batch_ora_errors": {
-                "daily": "Batch ORA Errors Dashboard",
-                "weekly": "Batch ORA Errors Dashboard",
-                "monthly": "Batch ORA Errors Dashboard",
-                "yearly": "Batch ORA Errors Dashboard"
             },
             "mass_update": {
                 "daily": "🔄 Mass Update Dashboard",
@@ -4034,6 +3934,18 @@ class MonitoringDashboard:
                 "weekly": "🔍 Consolidated Inquiry Dashboard",
                 "monthly": "🔍 Consolidated Inquiry Dashboard",
                 "yearly": "🔍 Consolidated Inquiry Dashboard"
+            },
+            "online_ora_errors": {
+                "daily": "Online ORA Errors Dashboard",
+                "weekly": "Online ORA Errors Dashboard",
+                "monthly": "Online ORA Errors Dashboard",
+                "yearly": "Online ORA Errors Dashboard"
+            },
+            "batch_ora_errors": {
+                "daily": "Batch ORA Errors Dashboard",
+                "weekly": "Batch ORA Errors Dashboard",
+                "monthly": "Batch ORA Errors Dashboard",
+                "yearly": "Batch ORA Errors Dashboard"
             }
         }
         
@@ -4045,8 +3957,6 @@ class MonitoringDashboard:
             "benefit_issuance": "#2196f3",
             "correspondence_tango": "#4caf50", 
             "error_counts": "#f44336",
-            "online_ora_errors": "#ff9800",
-            "batch_ora_errors": "#9c27b0",
             "user_impact": "#ff9800",
             "mass_update": "#9c27b0",
             "interfaces": "#607d8b", 
@@ -4057,7 +3967,9 @@ class MonitoringDashboard:
             "batch_status": "#795548",
             "uat_batch_status": "#FF7043",
             "prd_batch_status": "#1976D2",
-            "summary": "#17a2b8"
+            "summary": "#17a2b8",
+            "online_ora_errors": "#e91e63",
+            "batch_ora_errors": "#ff5722"
         }
         
         # Section icon mapping
@@ -4065,8 +3977,6 @@ class MonitoringDashboard:
             "benefit_issuance": "📈",
             "correspondence_tango": "📧", 
             "error_counts": "🚨",
-            "online_ora_errors": "💻",
-            "batch_ora_errors": "📊",
             "user_impact": "👥",
             "mass_update": "🔄",
             "interfaces": "🔗", 
@@ -4077,7 +3987,9 @@ class MonitoringDashboard:
             "batch_status": "⚙️",
             "uat_batch_status": "🧪",
             "prd_batch_status": "🏭",
-            "summary": "📋"
+            "summary": "📋",
+            "online_ora_errors": "🌐",
+            "batch_ora_errors": "⚙️"
         }
         
         section_color = section_colors.get(selected_section, "#1f4e79")
@@ -4124,8 +4036,6 @@ class MonitoringDashboard:
             "benefit_issuance": self.render_benefit_issuance_content,
             "correspondence_tango": self.render_correspondence_tango_content,
             "error_counts": self.render_error_counts_content,
-            "online_ora_errors": self.render_online_ora_errors_content,
-            "batch_ora_errors": self.render_batch_ora_errors_content,
             "user_impact": self.render_user_impact_content,
             "mass_update": self.render_mass_update_content,
             "interfaces": self.render_interfaces_content,
@@ -4142,6 +4052,8 @@ class MonitoringDashboard:
             "uat_batch_exceptions": self.render_uat_batch_exceptions_content,
             "uat_batch_runtime": self.render_uat_batch_runtime_content,
             "batch_status": self.render_batch_status_content,
+            "online_ora_errors": self.render_online_ora_errors_content,
+            "batch_ora_errors": self.render_batch_ora_errors_content,
             "uat_batch_status": self.render_uat_batch_status_content,
             "prd_batch_status": self.render_prd_batch_status_content
         }
@@ -4281,15 +4193,15 @@ class MonitoringDashboard:
             {
                 "key": "online_ora_errors",
                 "name": "Online ORA Errors",
-                "icon": "💻",
-                "description": "Monitor online Oracle database errors and exceptions",
+                "icon": "🌐",
+                "description": "Monitor online database errors & connection issues",
                 "priority": "high"
             },
             {
                 "key": "batch_ora_errors",
                 "name": "Batch ORA Errors",
-                "icon": "📊",
-                "description": "Track batch processing Oracle database errors",
+                "icon": "⚙️",
+                "description": "Track batch processing database errors & failures",
                 "priority": "high"
             },
             {
@@ -4467,6 +4379,10 @@ class MonitoringDashboard:
         try:
             if section_key == "error_counts":
                 return self.get_error_counts_status()
+            elif section_key == "online_ora_errors":
+                return self.get_online_ora_errors_status()
+            elif section_key == "batch_ora_errors":
+                return self.get_batch_ora_errors_status()
             elif section_key == "user_impact":
                 return self.get_user_impact_status()
             elif section_key == "correspondence_tango":
@@ -4531,6 +4447,98 @@ class MonitoringDashboard:
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error loading data: {str(e)}")
+    
+    def get_online_ora_errors_status(self):
+        """Get status for Online ORA Errors based on error count."""
+        try:
+            # Load data from Online ORA Errors file
+            from src.data_loader import ExcelDataLoader
+            import os
+            
+            online_ora_file = Path(__file__).parent / "Monitoring Data Files" / "ORA Errors" / "Online.xlsx"
+            
+            if not online_ora_file.exists():
+                return ("warning", "#ffc107", "No Online ORA errors file found")
+            
+            # Load data from the file
+            loader = ExcelDataLoader(str(online_ora_file))
+            df = loader.load_data()
+            
+            if df is None or df.empty:
+                return ("normal", "#28a745", "No ORA errors detected")
+            
+            # Apply date filtering
+            filtered_df = self.filter_data_by_selected_date(df)
+            
+            if filtered_df.empty:
+                return ("normal", "#28a745", "No ORA errors for selected date")
+            
+            # Count errors
+            error_count = len(filtered_df)
+            
+            # Check if there's an error count column for total errors
+            error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
+            if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
+                total_errors = filtered_df[error_count_cols[0]].sum()
+            else:
+                total_errors = error_count
+            
+            # Online ORA Errors thresholds: Green <60, Yellow 60-69, Red >=70
+            if total_errors < 60:
+                return ("normal", "#28a745", f"{int(total_errors)} ORA errors detected")
+            elif total_errors < 70:
+                return ("warning", "#ffc107", f"{int(total_errors)} ORA errors detected")
+            else:
+                return ("error", "#dc3545", f"{int(total_errors)} ORA errors detected")
+                
+        except Exception as e:
+            return ("warning", "#ffc107", f"Error checking online ORA status: {str(e)}")
+    
+    def get_batch_ora_errors_status(self):
+        """Get status for Batch ORA Errors based on error count."""
+        try:
+            # Load data from Batch ORA Errors file
+            from src.data_loader import ExcelDataLoader
+            import os
+            
+            batch_ora_file = Path(__file__).parent / "Monitoring Data Files" / "ORA Errors" / "Batch.xlsx"
+            
+            if not batch_ora_file.exists():
+                return ("warning", "#ffc107", "No Batch ORA errors file found")
+            
+            # Load data from the file
+            loader = ExcelDataLoader(str(batch_ora_file))
+            df = loader.load_data()
+            
+            if df is None or df.empty:
+                return ("normal", "#28a745", "No ORA errors detected")
+            
+            # Apply date filtering
+            filtered_df = self.filter_data_by_selected_date(df)
+            
+            if filtered_df.empty:
+                return ("normal", "#28a745", "No ORA errors for selected date")
+            
+            # Count errors
+            error_count = len(filtered_df)
+            
+            # Check if there's an error count column for total errors
+            error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
+            if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
+                total_errors = filtered_df[error_count_cols[0]].sum()
+            else:
+                total_errors = error_count
+            
+            # Batch ORA Errors thresholds: Green <11, Yellow 11-14, Red >=15
+            if total_errors < 11:
+                return ("normal", "#28a745", f"{int(total_errors)} ORA errors detected")
+            elif total_errors < 15:
+                return ("warning", "#ffc107", f"{int(total_errors)} ORA errors detected")
+            else:
+                return ("error", "#dc3545", f"{int(total_errors)} ORA errors detected")
+                
+        except Exception as e:
+            return ("warning", "#ffc107", f"Error checking batch ORA status: {str(e)}")
     
     def get_user_impact_status(self):
         """Get status for User Impact based on 0 Errors % with 89%/90% thresholds."""
@@ -4996,7 +5004,7 @@ class MonitoringDashboard:
             return selected_date.strftime("%Y-%m-%d")
     
     def filter_data_by_selected_date(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Filter dataframe to show only data for the selected date or week."""
+        """Filter dataframe to show only data for the selected date."""
         if df is None or df.empty:
             return df
             
@@ -5012,225 +5020,39 @@ class MonitoringDashboard:
             else:
                 selected_date = datetime.now().date()
         
-        # Check if we're in a weekly or monthly dashboard
-        selected_period = st.session_state.get('selected_period', 'daily')
-        is_weekly_dashboard = selected_period == 'weekly'
-        is_monthly_dashboard = selected_period == 'monthly'
-        
         # Try to find date columns in the dataframe
         date_columns = []
-        week_start_col = None
-        week_end_col = None
-        week_of_col = None
-        
         for col in df.columns:
             col_lower = col.lower()
             if any(date_word in col_lower for date_word in ['date', 'day', 'time', 'created', 'updated', 'week']):
                 date_columns.append(col)
-                
-                # Identify specific week columns
-                if 'week start' in col_lower:
-                    week_start_col = col
-                elif 'week end' in col_lower:
-                    week_end_col = col
-                elif 'week of' in col_lower:
-                    week_of_col = col
         
         # If no obvious date columns found, return empty dataframe (no data for selected date)
         if not date_columns:
             return pd.DataFrame(columns=df.columns)
         
-        # Filter by the selected date or week
+        # Filter by the selected date
         filtered_df = df.copy()
         found_matching_data = False
         
-        if is_weekly_dashboard:
-            # For weekly dashboards, check if this is benefit issuance section
-            selected_section = st.session_state.get('selected_section', '')
-            
-            if selected_section == 'benefit_issuance':
-                # Special logic for Weekly Benefit Issuance: check for Week Start/End columns first
-                if week_start_col and week_end_col:
-                    # Use separate Week Start and Week End columns
-                    try:
-                        # Convert columns to datetime
-                        if not pd.api.types.is_datetime64_any_dtype(filtered_df[week_start_col]):
-                            filtered_df[week_start_col] = pd.to_datetime(filtered_df[week_start_col], errors='coerce')
-                        if not pd.api.types.is_datetime64_any_dtype(filtered_df[week_end_col]):
-                            filtered_df[week_end_col] = pd.to_datetime(filtered_df[week_end_col], errors='coerce')
-                        
-                        # Filter for rows where selected date falls between week start and end
-                        mask = (filtered_df[week_start_col].dt.date <= selected_date) & \
-                               (filtered_df[week_end_col].dt.date >= selected_date)
-                        temp_filtered = filtered_df[mask]
-                        
-                        if not temp_filtered.empty:
-                            filtered_df = temp_filtered
-                            found_matching_data = True
-                            
-                    except Exception as e:
-                        print(f"Error filtering by Week Start/End columns: {e}")
+        for date_col in date_columns:
+            try:
+                # Convert the date column to datetime if it's not already
+                if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
+                    filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
                 
-                # If no Week Start/End columns or filtering failed, try Week Of column
-                if not found_matching_data:
-                    for date_col in date_columns:
-                        try:
-                            # Convert the date column to datetime if it's not already
-                            if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
-                                filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
-                            
-                            # Check if this is a "Week Of" column specifically
-                            col_lower = date_col.lower()
-                            if 'week of' in col_lower:
-                                # For "Week Of" columns, look for rows where the week range contains our selected date
-                                mask = pd.Series([False] * len(filtered_df))
-                                
-                                for idx, week_data in filtered_df[date_col].items():
-                                    if pd.isna(week_data):
-                                        continue
-                                    try:
-                                        week_str = str(week_data).strip()
-                                        
-                                        # Handle the format: "27 Oct 2025 to 31 Oct 2025"
-                                        found_match = False
-                                        
-                                        # Check if it's a date range with "to"
-                                        if ' to ' in week_str.lower():
-                                            parts = week_str.split(' to ')
-                                            if len(parts) == 2:
-                                                start_str = parts[0].strip()
-                                                end_str = parts[1].strip()
-                                                
-                                                start_date = pd.to_datetime(start_str, errors='coerce')
-                                                end_date = pd.to_datetime(end_str, errors='coerce')
-                                                
-                                                if pd.notna(start_date) and pd.notna(end_date):
-                                                    if start_date.date() <= selected_date <= end_date.date():
-                                                        found_match = True
-                                        
-                                        # Check if it contains multiple dates (comma-separated)
-                                        elif ',' in week_str:
-                                            dates_in_week = [d.strip() for d in week_str.split(',')]
-                                            for date_str in dates_in_week:
-                                                try:
-                                                    date_obj = pd.to_datetime(date_str, errors='coerce')
-                                                    if pd.notna(date_obj) and date_obj.date() == selected_date:
-                                                        found_match = True
-                                                        break
-                                                except:
-                                                    continue
-                                        
-                                        # Check if it's a single date (the start of the week)
-                                        else:
-                                            date_obj = pd.to_datetime(week_str, errors='coerce')
-                                            if pd.notna(date_obj):
-                                                # Check if selected date falls in the same week as this date
-                                                week_start_date = date_obj.date()
-                                                selected_datetime = datetime.combine(selected_date, datetime.min.time())
-                                                week_start_datetime = datetime.combine(week_start_date, datetime.min.time())
-                                                
-                                                # Calculate if they're in the same week (within 4 days for weekdays)
-                                                days_diff = abs((selected_datetime - week_start_datetime).days)
-                                                if days_diff <= 4:  # Within the same week (Mon-Fri)
-                                                    found_match = True
-                                        
-                                        if found_match:
-                                            mask.iloc[idx] = True
-                                            
-                                    except Exception as e:
-                                        # Debug: log parsing errors
-                                        print(f"Error parsing week data '{week_data}': {e}")
-                                        continue
-                                
-                                temp_filtered = filtered_df[mask]
-                                
-                                # If we have matching data, use it
-                                if not temp_filtered.empty:
-                                    filtered_df = temp_filtered
-                                    found_matching_data = True
-                                    break
-                                    
-                        except Exception:
-                            continue
-            else:
-                # For other weekly dashboards (non-benefit issuance), use standard week calculation
-                from datetime import datetime, timedelta
-                selected_datetime = datetime.combine(selected_date, datetime.min.time())
-                days_since_monday = selected_datetime.weekday()
-                week_start = selected_datetime - timedelta(days=days_since_monday)
-                week_end = week_start + timedelta(days=4)  # Friday (only weekdays)
+                # Filter for the selected date
+                mask = filtered_df[date_col].dt.date == selected_date
+                temp_filtered = filtered_df[mask]
                 
-                for date_col in date_columns:
-                    try:
-                        # Convert the date column to datetime if it's not already
-                        if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
-                            filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
-                        
-                        # Filter for weekdays within the week
-                        mask = (filtered_df[date_col].dt.date >= week_start.date()) & \
-                               (filtered_df[date_col].dt.date <= week_end.date()) & \
-                               (filtered_df[date_col].dt.dayofweek < 5)  # Only weekdays (0-4)
-                        temp_filtered = filtered_df[mask]
-                        
-                        # If we have matching data, use it
-                        if not temp_filtered.empty:
-                            filtered_df = temp_filtered
-                            found_matching_data = True
-                            break
-                            
-                    except Exception:
-                        continue
-        elif is_monthly_dashboard:
-            # For monthly dashboards, filter for the month containing the selected date
-            for date_col in date_columns:
-                try:
-                    # Convert the date column to datetime if it's not already
-                    if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
-                        filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
+                # If we have matching data, use it
+                if not temp_filtered.empty:
+                    filtered_df = temp_filtered
+                    found_matching_data = True
+                    break
                     
-                    from datetime import datetime
-                    import calendar
-                    
-                    # Convert selected_date to datetime for calculation
-                    selected_datetime = datetime.combine(selected_date, datetime.min.time())
-                    
-                    # Calculate the start and end of the month for the selected date
-                    month_start = selected_datetime.replace(day=1)
-                    last_day = calendar.monthrange(selected_datetime.year, selected_datetime.month)[1]
-                    month_end = selected_datetime.replace(day=last_day)
-                    
-                    # Filter for dates within this month
-                    mask = (filtered_df[date_col].dt.date >= month_start.date()) & \
-                           (filtered_df[date_col].dt.date <= month_end.date())
-                    temp_filtered = filtered_df[mask]
-                    
-                    # If we have matching data, use it
-                    if not temp_filtered.empty:
-                        filtered_df = temp_filtered
-                        found_matching_data = True
-                        break
-                        
-                except Exception:
-                    continue
-        else:
-            # For daily dashboards, filter for the exact selected date
-            for date_col in date_columns:
-                try:
-                    # Convert the date column to datetime if it's not already
-                    if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
-                        filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
-                    
-                    mask = filtered_df[date_col].dt.date == selected_date
-                    temp_filtered = filtered_df[mask]
-                    
-                    # If we have matching data, use it
-                    if not temp_filtered.empty:
-                        filtered_df = temp_filtered
-                        found_matching_data = True
-                        break
-                        
-                except Exception:
-                    continue
+            except Exception:
+                continue
         
         # Return filtered data if found, otherwise empty DataFrame
         return filtered_df if found_matching_data else pd.DataFrame(columns=df.columns)
@@ -5582,14 +5404,6 @@ class MonitoringDashboard:
         """, unsafe_allow_html=True)
 
 
-    def check_and_display_no_data_message(self, df: pd.DataFrame, selected_period: str = None) -> bool:
-        """Check if dataframe is empty and display consistent no data message.
-        Returns True if data is empty, False if data exists."""
-        if df.empty:
-            st.warning("⚠️ No Data available for this time period")
-            return True
-        return False
-
     def render_benefit_issuance_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Benefit Issuance specific content."""
         
@@ -5604,91 +5418,9 @@ class MonitoringDashboard:
         # Apply date filtering to ensure we show data for the selected date
         df = self.filter_data_by_selected_date(df)
         
-        # Debug: Show what data was found after filtering for weekly dashboards
-        if selected_period == 'weekly' and df.empty:
-            st.warning("⚠️ No Data available for this time period")
-            
-            # Show available week ranges in debug
-            try:
-                original_result = self.auto_load_excel_file(st.session_state.get('selected_section'), selected_period)
-                if original_result and original_result.get("df") is not None:
-                    orig_df = original_result["df"]
-                    
-                    # Check for Week Start/End columns
-                    week_start_col = None
-                    week_end_col = None
-                    week_of_col = None
-                    
-                    for col in orig_df.columns:
-                        col_lower = col.lower()
-                        if 'week start' in col_lower:
-                            week_start_col = col
-                        elif 'week end' in col_lower:
-                            week_end_col = col
-                        elif 'week of' in col_lower:
-                            week_of_col = col
-                    
-                    if week_start_col and week_end_col:
-                        st.write(f"📊 Found Week Start/End columns: '{week_start_col}' and '{week_end_col}'")
-                        # Show sample data from both columns
-                        sample_data = orig_df[[week_start_col, week_end_col]].dropna().head(5)
-                        st.write("Sample week ranges:")
-                        for idx, row in sample_data.iterrows():
-                            start_date = pd.to_datetime(row[week_start_col], errors='coerce')
-                            end_date = pd.to_datetime(row[week_end_col], errors='coerce')
-                            if pd.notna(start_date) and pd.notna(end_date):
-                                st.write(f"  • {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}")
-                    
-                    elif week_of_col:
-                        st.write(f"📊 Available data in column '{week_of_col}':")
-                        unique_weeks = orig_df[week_of_col].dropna().unique()
-                        for i, week in enumerate(unique_weeks[:10]):  # Show first 10
-                            st.write(f"  {i+1}. `{week}` (type: {type(week).__name__})")
-                        if len(unique_weeks) > 10:
-                            st.write(f"  ... and {len(unique_weeks) - 10} more entries")
-                    
-                    selected_date = self.get_selected_date()
-                    st.write(f"🎯 Looking for week containing: **{selected_date.strftime('%Y-%m-%d')}** ({selected_date.strftime('%A')})")
-                    
-                    # Show what the system would calculate as the week range
-                    from datetime import datetime, timedelta
-                    selected_datetime = datetime.combine(selected_date, datetime.min.time())
-                    days_since_monday = selected_datetime.weekday()
-                    week_start = selected_datetime - timedelta(days=days_since_monday)
-                    week_end = week_start + timedelta(days=4)
-                    st.write(f"📅 Expected week range: {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}")
-                        
-            except Exception as e:
-                st.error(f"Debug error: {e}")
-        elif selected_period == 'weekly' and not df.empty:
-            st.success(f"✅ Found {len(df)} row(s) of data for the selected week!")
-        elif df.empty:
-            st.warning("⚠️ No Data available for this time period")
-        
         # Display the selected date for clarity
         selected_date = self.get_selected_date()
-        
-        if selected_period == 'weekly':
-            # For weekly dashboards, show the weekday range
-            from datetime import datetime, timedelta
-            selected_datetime = datetime.combine(selected_date, datetime.min.time())
-            days_since_monday = selected_datetime.weekday()  # Monday = 0, Sunday = 6
-            week_start = selected_datetime - timedelta(days=days_since_monday)
-            week_end = week_start + timedelta(days=4)  # Friday (only weekdays)
-            
-            st.markdown(f"**📅 Data for week of:** {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')} (weekdays only, containing selected date: {selected_date.strftime('%Y-%m-%d')})")
-        elif selected_period == 'monthly':
-            # For monthly dashboards, show the month range
-            from datetime import datetime
-            import calendar
-            selected_datetime = datetime.combine(selected_date, datetime.min.time())
-            month_start = selected_datetime.replace(day=1)
-            last_day = calendar.monthrange(selected_datetime.year, selected_datetime.month)[1]
-            month_end = selected_datetime.replace(day=last_day)
-            
-            st.markdown(f"**📅 Data for month of:** {month_start.strftime('%B %Y')} ({month_start.strftime('%Y-%m-%d')} to {month_end.strftime('%Y-%m-%d')}) (containing selected date: {selected_date.strftime('%Y-%m-%d')})")
-        else:
-            st.markdown(f"**📅 Data as of:** {selected_date.strftime('%Y-%m-%d')}")
+        st.markdown(f"**📅 Data as of:** {selected_date.strftime('%Y-%m-%d')}")
         st.markdown("---")
         
         # Special preprocessing for Vendoring Payments BEFORE filtering
@@ -5701,9 +5433,6 @@ class MonitoringDashboard:
         
         # Apply filters
         filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Remove empty rows to clean up display
-        filtered_df = remove_empty_rows(filtered_df)
         
         # Sort by date columns (latest to oldest)
         filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
@@ -5815,9 +5544,6 @@ class MonitoringDashboard:
         """Render benefit issuance table with variance highlighting."""
         import pandas as pd
         
-        # Additional aggressive empty row removal for table display
-        df = remove_empty_rows(df)
-        
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
         
@@ -5923,8 +5649,9 @@ class MonitoringDashboard:
             # Apply styling
             styled_df = display_df.style.apply(highlight_variance_rows, axis=1)
             
-            # Display with custom styling
-            display_clean_dataframe(styled_df, use_container_width=True, hide_index=True)
+            # Display with custom styling and dynamic height
+            display_height = min(600, max(200, len(df) * 35 + 100))
+            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
         else:
             # If no variance columns found, still apply currency formatting
             display_df = df.copy()
@@ -5961,8 +5688,9 @@ class MonitoringDashboard:
                     mask = (display_df[col] == '') & (display_df[col].notna())
                     display_df[col] = display_df[col].where(~mask, 'N/A')
             
-            # Use regular table
-            display_clean_dataframe(display_df, use_container_width=True, hide_index=True)
+            # Use regular table with dynamic height
+            display_height = min(600, max(200, len(display_df) * 35 + 100))
+            st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
     
     def render_view_history_table(self, df: pd.DataFrame, title: str) -> None:
         """Render View History Screen Validation table with merged date cells."""
@@ -6133,7 +5861,7 @@ class MonitoringDashboard:
         if not date_columns:
             # No date columns found, show regular table
             st.write("**Main Tango Monitoring Data:**")
-            display_clean_dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, use_container_width=True, height=400, hide_index=True)
             return
         
         date_col = date_columns[0]  # Use first date column
@@ -6391,8 +6119,9 @@ class MonitoringDashboard:
             # Apply styling
             styled_df = display_df.style.apply(highlight_difference_rows, axis=1)
             
-            # Display with custom styling
-            display_clean_dataframe(styled_df, use_container_width=True, hide_index=True)
+            # Display with custom styling and dynamic height
+            display_height = min(600, max(200, len(display_df) * 35 + 100))
+            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
             
             # Add legend
             st.markdown("""
@@ -6407,7 +6136,8 @@ class MonitoringDashboard:
             """, unsafe_allow_html=True)
         else:
             # If no difference columns found, use regular table with formatting
-            display_clean_dataframe(upload_status_formatted, use_container_width=True, hide_index=True)
+            display_height = min(600, max(200, len(upload_status_formatted) * 35 + 100))
+            st.dataframe(upload_status_formatted, use_container_width=True, height=display_height, hide_index=True)
         
         # Show summary metrics for upload status
         col1, col2, col3 = st.columns(3)
@@ -6450,10 +6180,6 @@ class MonitoringDashboard:
         # Apply date filtering to ensure we show data for the selected date
         df = self.filter_data_by_selected_date(df)
         
-        # Check for empty data and show consistent message
-        if self.check_and_display_no_data_message(df, selected_period):
-            return
-        
         # Display the selected date for clarity
         selected_date = self.get_selected_date()
         st.markdown(f"**📅 Data as of:** {selected_date.strftime('%Y-%m-%d')}")
@@ -6465,9 +6191,6 @@ class MonitoringDashboard:
         
         # Apply filters
         filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Remove empty rows to clean up display
-        filtered_df = remove_empty_rows(filtered_df)
         
         # Sort by date columns (latest to oldest)
         filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
@@ -6602,7 +6325,7 @@ class MonitoringDashboard:
         # Show sample data
         if not df.empty:
             st.write("**Sample Records:**")
-            display_clean_dataframe(df.head(3), hide_index=True)
+            st.dataframe(df.head(3), hide_index=True)
     
     def render_error_counts_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render 100 Error Counts specific content."""
@@ -6615,20 +6338,10 @@ class MonitoringDashboard:
             st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
-        # Apply date filtering to ensure we show data for the selected date
-        df = self.filter_data_by_selected_date(df)
-        
-        # Check for empty data and show consistent message
-        if self.check_and_display_no_data_message(df, selected_period):
-            return
-        
         with st.expander("🚨 **Error Filters**", expanded=False):
             filters = self.create_inline_filters(df)
         
         filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Remove empty rows to clean up display
-        filtered_df = remove_empty_rows(filtered_df)
         
         # Sort by date columns (latest to oldest)
         filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
@@ -6665,20 +6378,10 @@ class MonitoringDashboard:
             st.info("👆 Click on a dashboard item in the sidebar to view its contents")
             return
         
-        # Apply date filtering to ensure we show data for the selected date
-        df = self.filter_data_by_selected_date(df)
-        
-        # Check for empty data and show consistent message
-        if self.check_and_display_no_data_message(df, selected_period):
-            return
-        
         with st.expander("👥 **Impact Filters**", expanded=False):
             filters = self.create_inline_filters(df)
         
         filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Remove empty rows to clean up display
-        filtered_df = remove_empty_rows(filtered_df)
         
         # Sort by date columns (latest to oldest)
         filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
@@ -6704,106 +6407,6 @@ class MonitoringDashboard:
         with tab3:
             self.render_custom_analysis(filtered_df, key_prefix="user_impact_")
     
-    def render_online_ora_errors_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Online ORA Errors specific content."""
-        
-        selected_subsection = st.session_state.get('selected_subsection')
-        
-        # Only show data if a specific file is selected
-        if not selected_subsection:
-            # Show selection message when no file is selected
-            st.info("👆 Click on a dashboard item in the sidebar to view its contents")
-            return
-        
-        # Apply date filtering to ensure we show data for the selected date
-        df = self.filter_data_by_selected_date(df)
-        
-        # Check for empty data and show consistent message
-        if self.check_and_display_no_data_message(df, selected_period):
-            return
-        
-        with st.expander("💻 **Online ORA Error Filters**", expanded=False):
-            filters = self.create_inline_filters(df)
-        
-        filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Remove empty rows to clean up display
-        filtered_df = remove_empty_rows(filtered_df)
-        
-        # Sort by date columns (latest to oldest)
-        filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
-        
-        filtered_df = format_dataframe_dates(filtered_df)
-        
-        # Data Table - Main Focus
-        st.header("📋 Data Table")
-        file_display_name = f"{selected_subsection} ORA Errors Data"
-        self.render_ora_errors_table(filtered_df, file_display_name)
-        
-        # Key Metrics - Below Data Table
-        st.header(f"📊 Key Metrics")
-        self.render_ora_errors_metrics(filtered_df)
-        
-        # Additional analysis tabs
-        tab1, tab2, tab3 = st.tabs(["📊 Error Trends", "🔍 Error Analysis", "📈 Resolution Status"])
-        
-        with tab1:
-            self.render_charts(filtered_df, selected_period, key_prefix="online_ora_")
-        with tab2:
-            self.table_component.summary_stats(filtered_df)
-        with tab3:
-            self.render_custom_analysis(filtered_df, key_prefix="online_ora_")
-    
-    def render_batch_ora_errors_content(self, df: pd.DataFrame, selected_period: str) -> None:
-        """Render Batch ORA Errors specific content."""
-        
-        selected_subsection = st.session_state.get('selected_subsection')
-        
-        # Only show data if a specific file is selected
-        if not selected_subsection:
-            # Show selection message when no file is selected
-            st.info("👆 Click on a dashboard item in the sidebar to view its contents")
-            return
-        
-        # Apply date filtering to ensure we show data for the selected date
-        df = self.filter_data_by_selected_date(df)
-        
-        # Check for empty data and show consistent message
-        if self.check_and_display_no_data_message(df, selected_period):
-            return
-        
-        with st.expander("📊 **Batch ORA Error Filters**", expanded=False):
-            filters = self.create_inline_filters(df)
-        
-        filtered_df = self.filter_component.apply_filters(df, filters)
-        
-        # Remove empty rows to clean up display
-        filtered_df = remove_empty_rows(filtered_df)
-        
-        # Sort by date columns (latest to oldest)
-        filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
-        
-        filtered_df = format_dataframe_dates(filtered_df)
-        
-        # Data Table - Main Focus
-        st.header("📋 Data Table")
-        file_display_name = f"{selected_subsection} ORA Errors Data"
-        self.render_ora_errors_table(filtered_df, file_display_name)
-        
-        # Key Metrics - Below Data Table
-        st.header(f"📊 Key Metrics")
-        self.render_ora_errors_metrics(filtered_df)
-        
-        # Additional analysis tabs
-        tab1, tab2, tab3 = st.tabs(["📊 Error Trends", "🔍 Error Analysis", "📈 Resolution Status"])
-        
-        with tab1:
-            self.render_charts(filtered_df, selected_period, key_prefix="batch_ora_")
-        with tab2:
-            self.table_component.summary_stats(filtered_df)
-        with tab3:
-            self.render_custom_analysis(filtered_df, key_prefix="batch_ora_")
-
     def render_mass_update_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Mass Update specific content."""
         # Check if user wants to view data
@@ -7038,8 +6641,9 @@ class MonitoringDashboard:
             # Apply styling
             styled_df = display_df.style.apply(highlight_connections_rows, axis=1)
             
-            # Display with custom styling
-            display_clean_dataframe(styled_df, use_container_width=True, hide_index=True)
+            # Display with custom styling and dynamic height
+            display_height = min(600, max(200, len(df) * 35 + 100))
+            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
             
             # Add legend
             st.markdown("""
@@ -7073,8 +6677,9 @@ class MonitoringDashboard:
             # Apply percentage formatting to all percentage-related columns
             display_df = format_percentage_columns(display_df)
             
-            # Use regular table
-            display_clean_dataframe(display_df, use_container_width=True, hide_index=True)
+            # Use regular table with dynamic height
+            display_height = min(600, max(200, len(df) * 35 + 100))
+            st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
     
     def render_hung_threads_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render Hung Threads specific content."""
@@ -7263,7 +6868,7 @@ class MonitoringDashboard:
                         # Display the data with proper table formatting
                         st.markdown("### 📊 Detailed Data")
                         display_height = min(600, max(200, len(df_sorted) * 35 + 100))
-                        display_clean_dataframe(
+                        st.dataframe(
                             df_sorted, 
                             width="stretch", 
                             height=display_height, 
@@ -7530,18 +7135,19 @@ class MonitoringDashboard:
         
 
         
+        # Use dynamic height based on number of rows
+        display_height = min(600, max(200, len(display_df) * 35 + 100))
+        
+
 
         # Display the main table
-        display_clean_dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
         
 
     
     def render_error_counts_table(self, df: pd.DataFrame, title: str) -> None:
         """Render Error Counts table with calculated percentage columns."""
         import pandas as pd
-        
-        # Additional aggressive empty row removal for table display
-        df = remove_empty_rows(df)
         
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
@@ -7654,8 +7260,9 @@ class MonitoringDashboard:
             completeness = ((len(display_df) - display_df.isnull().sum().sum()) / (len(display_df) * len(display_df.columns)) * 100) if len(display_df) > 0 else 0
             st.metric("Data Completeness", f"{completeness:.1f}%")
         
-        # Display the table
-        display_clean_dataframe(display_df, use_container_width=True, hide_index=True)
+        # Use dynamic height based on number of rows
+        display_height = min(600, max(200, len(display_df) * 35 + 100))
+        st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
         
 
         
@@ -8074,7 +7681,7 @@ class MonitoringDashboard:
             # Check if we should load data (either has subsection OR is a section that loads data directly)
             sections_with_direct_data = ['prd_online_exceptions', 'prd_batch_exceptions', 'prd_batch_runtime',
                                        'uat_online_exceptions', 'uat_batch_exceptions', 'uat_batch_runtime',
-                                       'uat_batch_status', 'prd_batch_status']  # Sections that load data without subsections
+                                       'uat_batch_status', 'prd_batch_status', 'online_ora_errors', 'batch_ora_errors']  # Sections that load data without subsections
             
             # Sections that need subsection selection first
             sections_requiring_subsections = ['batch_status', 'daily_exceptions', 'benefit_issuance', 'miscellaneous_bridges', 'correspondence_tango']
@@ -8082,8 +7689,6 @@ class MonitoringDashboard:
             # Sections with single subsections - auto-select the subsection
             single_subsection_mappings = {
                 'error_counts': 'Daily 100 Error Counts',
-                'online_ora_errors': 'Online',
-                'batch_ora_errors': 'Batch',
                 'user_impact': 'Daily User Impact Status'
             }
             # Check if we need to load data for sections that have data viewing enabled
@@ -8314,70 +7919,6 @@ class MonitoringDashboard:
             env_status = "Critical" if environment == "PRD" and len(df) > 10 else "Monitoring"
             st.metric(f"{environment} Status", env_status)
 
-    def render_ora_errors_table(self, df: pd.DataFrame, title: str) -> None:
-        """Render ORA Errors table with appropriate formatting."""
-        import pandas as pd
-        
-        # Additional aggressive empty row removal for table display
-        df = remove_empty_rows(df)
-        
-        # Sort by date columns (latest to oldest)
-        df = sort_dataframe_by_date(df, ascending=False)
-        
-        # Apply date formatting to the dataframe
-        df = format_dataframe_dates(df)
-        
-        # Display table title
-        st.subheader(title)
-        
-        # Create a copy of the dataframe for display
-        display_df = df.copy()
-        
-        if display_df.empty:
-            st.info("No ORA errors data available for the selected date range.")
-            return
-        
-        # Display the dataframe with clean formatting
-        display_clean_dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # Show total record count
-        st.caption(f"📊 Total Records: {len(display_df)}")
-
-    def render_ora_errors_metrics(self, df: pd.DataFrame) -> None:
-        """Render ORA errors metrics."""
-        col1, col2, col3, col4 = st.columns(4)
-        
-        # Count total errors
-        total_errors = len(df)
-        
-        # Look for error severity if available
-        severity_high = 0
-        if not df.empty:
-            # Check if there are severity or error type columns
-            for col in df.columns:
-                col_lower = col.lower().strip()
-                if 'severity' in col_lower or 'level' in col_lower or 'priority' in col_lower:
-                    try:
-                        severity_high = len(df[df[col].astype(str).str.contains('high|critical|error', case=False, na=False)])
-                    except:
-                        pass
-                    break
-        
-        with col1:
-            delta_text = f"+{total_errors}" if total_errors > 0 else "0"
-            st.metric("Total ORA Errors", total_errors, delta=delta_text if total_errors > 0 else None)
-        with col2:
-            status = "Critical" if total_errors > 50 else "Warning" if total_errors > 10 else "Good"
-            st.metric("Error Status", status)
-        with col3:
-            st.metric("High Severity", severity_high if severity_high > 0 else "None")
-        with col4:
-            health = "Action Needed" if total_errors > 20 else "Monitoring"
-            st.metric("System Health", health)
 
     def get_previous_working_day(self) -> datetime:
         """Calculate the previous working day (skipping weekends)."""
@@ -8484,10 +8025,6 @@ class MonitoringDashboard:
         st.markdown(f"**📅 Data as of:** {selected_date.strftime('%Y-%m-%d')}")
         st.markdown("---")
         
-        # Check for empty data and show consistent message
-        if self.check_and_display_no_data_message(df):
-            return
-        
         # Filter data for the selected date and display immediately
         if df is not None and not df.empty:
             filtered_df = self.filter_batch_status_data(df)
@@ -8516,7 +8053,7 @@ class MonitoringDashboard:
                 # Instead, just reverse the order if needed
                 df_display = df_display.iloc[::-1]
                 
-                display_clean_dataframe(
+                st.dataframe(
                     df_display,
                     use_container_width=True,
                     height=400
@@ -8559,6 +8096,171 @@ class MonitoringDashboard:
                 st.metric("Date Checked", formatted_date)
             with col4:
                 st.metric("Status", "Unknown")
+    
+    def render_online_ora_errors_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Online ORA Errors specific content."""
+        # Load and display the ORA errors data
+        if df is not None and not df.empty:
+            # Apply date filtering
+            df = self.filter_data_by_selected_date(df)
+            
+            if df.empty:
+                st.info("📋 No Online ORA errors found for the selected date.")
+                return
+            
+            # Add filters section (similar to 100 Error Counts)
+            with st.expander("🌐 **ORA Error Filters**", expanded=False):
+                filters = self.create_inline_filters(df)
+            
+            filtered_df = self.filter_component.apply_filters(df, filters)
+            
+            # Sort by date columns (latest to oldest)
+            filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
+            
+            filtered_df = format_dataframe_dates(filtered_df)
+            
+            # Data Table - Main Focus
+            st.header("📋 Data Table")
+            self.render_ora_errors_table(filtered_df, "Online ORA Errors Data")
+            
+            # Key Metrics - Below Data Table
+            st.header(f"📊 Key Metrics")
+            self.render_ora_errors_metrics(filtered_df, "online")
+            
+            # Additional analysis tabs
+            tab1, tab2, tab3 = st.tabs(["📊 Error Trends", "🔍 Error Analysis", "📈 Resolution Status"])
+            
+            with tab1:
+                self.render_charts(filtered_df, selected_period, key_prefix="online_ora_")
+            with tab2:
+                self.table_component.summary_stats(filtered_df)
+            with tab3:
+                self.render_custom_analysis(filtered_df, key_prefix="online_ora_")
+        else:
+            st.info("📂 No Online ORA errors data available.")
+    
+    def render_batch_ora_errors_content(self, df: pd.DataFrame, selected_period: str) -> None:
+        """Render Batch ORA Errors specific content."""
+        # Load and display the ORA errors data
+        if df is not None and not df.empty:
+            # Apply date filtering
+            df = self.filter_data_by_selected_date(df)
+            
+            if df.empty:
+                st.info("📋 No Batch ORA errors found for the selected date.")
+                return
+            
+            # Add filters section (similar to 100 Error Counts)
+            with st.expander("⚙️ **ORA Error Filters**", expanded=False):
+                filters = self.create_inline_filters(df)
+            
+            filtered_df = self.filter_component.apply_filters(df, filters)
+            
+            # Sort by date columns (latest to oldest)
+            filtered_df = sort_dataframe_by_date(filtered_df, ascending=False)
+            
+            filtered_df = format_dataframe_dates(filtered_df)
+            
+            # Data Table - Main Focus
+            st.header("📋 Data Table")
+            self.render_ora_errors_table(filtered_df, "Batch ORA Errors Data")
+            
+            # Key Metrics - Below Data Table
+            st.header(f"📊 Key Metrics")
+            self.render_ora_errors_metrics(filtered_df, "batch")
+            
+            # Additional analysis tabs
+            tab1, tab2, tab3 = st.tabs(["📊 Error Trends", "🔍 Error Analysis", "📈 Resolution Status"])
+            
+            with tab1:
+                self.render_charts(filtered_df, selected_period, key_prefix="batch_ora_")
+            with tab2:
+                self.table_component.summary_stats(filtered_df)
+            with tab3:
+                self.render_custom_analysis(filtered_df, key_prefix="batch_ora_")
+        else:
+            st.info("📂 No Batch ORA errors data available.")
+    
+    def render_ora_errors_table(self, df: pd.DataFrame, title: str) -> None:
+        """Render ORA Errors table with appropriate formatting."""
+        import pandas as pd
+        
+        # Additional aggressive empty row removal for table display
+        df = remove_empty_rows(df)
+        
+        # Sort by date columns (latest to oldest)
+        df = sort_dataframe_by_date(df, ascending=False)
+        
+        # Apply date formatting to the dataframe
+        df = format_dataframe_dates(df)
+        
+        # Create a copy of the dataframe for display
+        display_df = df.copy()
+        
+        if display_df.empty:
+            st.info("No ORA errors data available for the selected date range.")
+            return
+        
+        # Display the dataframe with clean formatting
+        display_clean_dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    def render_ora_errors_metrics(self, df: pd.DataFrame, section_type: str = "online") -> None:
+        """Render ORA errors metrics with section-specific thresholds."""
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Count total errors
+        total_errors = len(df)
+        
+        # Try to get actual error count from Error Count column if available
+        error_count_cols = [col for col in df.columns if 'error' in col.lower() and 'count' in col.lower()]
+        if error_count_cols:
+            total_error_count = df[error_count_cols[0]].sum() if pd.api.types.is_numeric_dtype(df[error_count_cols[0]]) else total_errors
+        else:
+            total_error_count = total_errors
+        
+        with col1:
+            st.metric("Total Errors", total_errors)
+        
+        with col2:
+            st.metric("Error Count", int(total_error_count))
+        
+        with col3:
+            # Most recent date
+            date_cols = [col for col in df.columns if any(keyword in col.lower() for keyword in ['date', 'time'])]
+            if date_cols:
+                try:
+                    latest_date = pd.to_datetime(df[date_cols[0]], errors='coerce').max()
+                    if pd.notna(latest_date):
+                        st.metric("Latest Error", latest_date.strftime('%Y-%m-%d'))
+                    else:
+                        st.metric("Latest Error", "Unknown")
+                except:
+                    st.metric("Latest Error", "Unknown")
+            else:
+                st.metric("Latest Error", "Unknown")
+        
+        with col4:
+            # Status based on section-specific thresholds
+            if section_type == "online":
+                # Online ORA Errors thresholds: Green <60, Yellow 60-69, Red >=70
+                if total_error_count < 60:
+                    st.metric("Status", "✅ Good")
+                elif total_error_count < 70:
+                    st.metric("Status", "⚠️ Watch")
+                else:
+                    st.metric("Status", "🔴 Critical")
+            else:  # batch
+                # Batch ORA Errors thresholds: Green <11, Yellow 11-14, Red >=15
+                if total_error_count < 11:
+                    st.metric("Status", "✅ Good")
+                elif total_error_count < 15:
+                    st.metric("Status", "⚠️ Watch")
+                else:
+                    st.metric("Status", "🔴 Critical")
 
 
 def main():
