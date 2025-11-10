@@ -1683,8 +1683,21 @@ class MonitoringDashboard:
         
         # Show current date filter status
         selected_date = self.get_selected_date()
+        start_date, end_date = self.get_selected_date_range()
+        
         st.sidebar.markdown("### � Current Date Filter")
-        st.sidebar.info(f"� **Viewing:** {selected_date.strftime('%B %d, %Y')}\n\n🏠 Go to Home page to change date")
+        
+        # Show different information based on date mode
+        if st.session_state.get('date_range_mode', False):
+            # Date range mode
+            days_count = (end_date - start_date).days + 1
+            if days_count == 1:
+                st.sidebar.info(f"📅 **Viewing:** {start_date.strftime('%B %d, %Y')}\n\n🏠 Go to Home page to change date")
+            else:
+                st.sidebar.info(f"📅 **Viewing Range:** {start_date.strftime('%b %d')} to {end_date.strftime('%b %d, %Y')}\n\n📊 **Total Days:** {days_count}\n\n🏠 Go to Home page to change range")
+        else:
+            # Single date mode
+            st.sidebar.info(f"📅 **Viewing:** {selected_date.strftime('%B %d, %Y')}\n\n🏠 Go to Home page to change date")
         
         st.sidebar.markdown("---")
         
@@ -4118,42 +4131,163 @@ class MonitoringDashboard:
         """
         st.markdown(status_cards_html, unsafe_allow_html=True)
         
-        # Date picker section
-        st.markdown("### 📅 Select Different Date")
+        # Date selection section
+        st.markdown("### 📅 Select Date or Date Range")
         col1, col2, col3 = st.columns([1, 2, 1])
         
         with col2:
-            # Date picker
-            selected_date = st.date_input(
-                "Choose a date to view data from:",
-                value=st.session_state.selected_date,
-                min_value=datetime(2020, 1, 1).date(),
-                max_value=datetime.now().date(),
-                help="Select any date to view historical data across all dashboards"
+            # Initialize date range mode in session state if not exists
+            if 'date_range_mode' not in st.session_state:
+                st.session_state.date_range_mode = False
+            
+            # Initialize radio button state if needed
+            if 'date_mode_select' not in st.session_state:
+                st.session_state.date_mode_select = "Single Date"
+            
+            # Sync radio button with internal state (but only if not set by button)
+            if 'button_action' not in st.session_state:
+                if st.session_state.date_range_mode:
+                    st.session_state.date_mode_select = "Date Range"
+                else:
+                    st.session_state.date_mode_select = "Single Date"
+            else:
+                # Clear the button action flag
+                del st.session_state.button_action
+            
+            # Toggle between single date and date range
+            date_mode = st.radio(
+                "Select viewing mode:",
+                ["Single Date", "Date Range"],
+                index=1 if st.session_state.date_mode_select == "Date Range" else 0,
+                horizontal=True,
+                help="Choose single date for specific day or date range for multiple days"
             )
             
-            # Update session state if date changed
-            if selected_date != st.session_state.selected_date:
-                st.session_state.selected_date = selected_date
-                st.success(f"✅ Date updated to {selected_date.strftime('%Y-%m-%d')}. This will apply to all dashboards.")
+            # Update session state based on radio button selection
+            st.session_state.date_range_mode = (date_mode == "Date Range")
+            st.session_state.date_mode_select = date_mode
+            
+            if st.session_state.date_range_mode:
+                # Date range picker
+                st.markdown("**Choose date range to view data from:**")
+                
+                # Initialize date range in session state if not exists
+                if 'date_range_start' not in st.session_state:
+                    st.session_state.date_range_start = default_date
+                if 'date_range_end' not in st.session_state:
+                    st.session_state.date_range_end = default_date
+                
+                range_col1, range_col2 = st.columns(2)
+                
+                with range_col1:
+                    start_date = st.date_input(
+                        "Start Date:",
+                        value=st.session_state.date_range_start,
+                        min_value=datetime(2020, 1, 1).date(),
+                        max_value=datetime.now().date()
+                    )
+                
+                with range_col2:
+                    end_date = st.date_input(
+                        "End Date:",
+                        value=st.session_state.date_range_end,
+                        min_value=start_date,
+                        max_value=datetime.now().date()
+                    )
+                
+                # Validate and update session state
+                if start_date <= end_date:
+                    if (start_date != st.session_state.date_range_start or 
+                        end_date != st.session_state.date_range_end):
+                        st.session_state.date_range_start = start_date
+                        st.session_state.date_range_end = end_date
+                        
+                        # Calculate days
+                        days_diff = (end_date - start_date).days + 1
+                        st.success(f"✅ Date range updated: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')} ({days_diff} days). This will apply to all dashboards.")
+                        st.rerun()
+                else:
+                    st.error("❌ End date must be after start date")
+                
+                # Show current range info
+                days_count = (st.session_state.date_range_end - st.session_state.date_range_start).days + 1
+                st.info(f"📊 **Current Range:** {st.session_state.date_range_start.strftime('%B %d, %Y')} to {st.session_state.date_range_end.strftime('%B %d, %Y')} ({days_count} days)")
+                
+            else:
+                # Single date picker
+                selected_date = st.date_input(
+                    "Choose a date to view data from:",
+                    value=st.session_state.selected_date,
+                    min_value=datetime(2020, 1, 1).date(),
+                    max_value=datetime.now().date(),
+                    help="Select any date to view historical data across all dashboards"
+                )
+                
+                # Update session state if date changed
+                if selected_date != st.session_state.selected_date:
+                    st.session_state.selected_date = selected_date
+                    st.success(f"✅ Date updated to {selected_date.strftime('%Y-%m-%d')}. This will apply to all dashboards.")
+                    st.rerun()
+            
+            # Reset buttons
+            with st.form("quick_actions_form", clear_on_submit=False):
+                reset_col1, reset_col2 = st.columns(2)
+                
+                with reset_col1:
+                    reset_button = st.form_submit_button("🔄 Reset to Latest Date", use_container_width=True)
+                
+                with reset_col2:
+                    last7_button = st.form_submit_button("📅 Last 7 Days", use_container_width=True)
+            
+            # Handle form submissions
+            if reset_button:
+                st.session_state.selected_date = default_date
+                st.session_state.date_range_start = default_date
+                st.session_state.date_range_end = default_date
+                st.session_state.date_range_mode = False  # Reset to single date mode
+                st.session_state.date_mode_select = "Single Date"  # Update radio button
+                st.session_state.button_action = True  # Prevent sync override
+                st.success(f"✅ Date reset to {default_date.strftime('%Y-%m-%d')} (single date mode)")
                 st.rerun()
             
-            # Reset to latest date button
-            if st.button("🔄 Reset to Latest Available Date", use_container_width=True):
-                st.session_state.selected_date = default_date
-                st.success(f"✅ Date reset to {default_date.strftime('%Y-%m-%d')}")
+            if last7_button:
+                from datetime import timedelta
+                end_date = default_date
+                start_date = end_date - timedelta(days=6)
+                st.session_state.date_range_start = start_date
+                st.session_state.date_range_end = end_date
+                st.session_state.date_range_mode = True
+                st.session_state.date_mode_select = "Date Range"  # Update radio button
+                st.session_state.button_action = True  # Prevent sync override
+                st.success(f"✅ Set to last 7 days: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
                 st.rerun()
         
         st.markdown("---")
         
-        # Show alert if viewing historical data
+        # Show alert if viewing historical data or date range
         from datetime import datetime
         selected_date = self.get_selected_date()
+        start_date, end_date = self.get_selected_date_range()
         recent_date_str = self.get_most_recent_weekday_date()
         default_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date() if recent_date_str != "No recent data" else datetime.now().date()
         
-        if selected_date != default_date:
-            st.warning(f"📅 **Historical View Active**: All dashboards will show data for **{selected_date.strftime('%B %d, %Y')}**. Use the date picker above to change or reset to latest data.")
+        # Check if we're in date range mode or viewing historical data
+        if st.session_state.get('date_range_mode', False):
+            # Date range mode
+            days_count = (end_date - start_date).days + 1
+            if days_count == 1:
+                if start_date != default_date:
+                    st.warning(f"📅 **Historical View Active**: All dashboards will show data for **{start_date.strftime('%B %d, %Y')}**. Use the date picker above to change or reset to latest data.")
+                else:
+                    st.info(f"📅 **Current View**: Showing data for **{start_date.strftime('%B %d, %Y')}** (latest available data).")
+            else:
+                st.info(f"📊 **Date Range Active**: All dashboards will show data from **{start_date.strftime('%b %d')} to {end_date.strftime('%b %d, %Y')}** ({days_count} days). Use the date picker above to change range.")
+        else:
+            # Single date mode
+            if selected_date != default_date:
+                st.warning(f"📅 **Historical View Active**: All dashboards will show data for **{selected_date.strftime('%B %d, %Y')}**. Use the date picker above to change or reset to latest data.")
+            else:
+                st.info(f"📅 **Current View**: Showing data for **{selected_date.strftime('%B %d, %Y')}** (latest available data).")
         
         self.render_dashboard_navigation_cards()
 
@@ -5004,21 +5138,41 @@ class MonitoringDashboard:
             return selected_date.strftime("%Y-%m-%d")
     
     def filter_data_by_selected_date(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Filter dataframe to show only data for the selected date."""
+        """Filter dataframe to show data for the selected date or date range."""
+        # Use the new date range filtering function which handles both single date and date range
+        return self.filter_data_by_selected_date_range(df)
+        
+        # Return filtered data if found, otherwise empty DataFrame
+        return filtered_df if found_matching_data else pd.DataFrame(columns=df.columns)
+    
+    def get_selected_date_range(self):
+        """Get the currently selected date range from session state."""
+        from datetime import datetime, timedelta
+        
+        # Check if we're in date range mode
+        if st.session_state.get('date_range_mode', False):
+            # Date range mode
+            start_date = st.session_state.get('date_range_start')
+            end_date = st.session_state.get('date_range_end')
+            
+            if start_date and end_date:
+                return start_date, end_date
+            else:
+                # Fallback to single date
+                selected_date = self.get_selected_date()
+                return selected_date, selected_date
+        else:
+            # Single date mode
+            selected_date = self.get_selected_date()
+            return selected_date, selected_date
+    
+    def filter_data_by_selected_date_range(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Filter dataframe to show data for the selected date range."""
         if df is None or df.empty:
             return df
-            
-        # Get selected date directly from session state to ensure it's current
-        if 'selected_date' in st.session_state:
-            selected_date = st.session_state.selected_date
-        else:
-            # Fallback to most recent weekday
-            from datetime import datetime
-            recent_date_str = self.get_most_recent_weekday_date()
-            if recent_date_str != "No recent data":
-                selected_date = datetime.strptime(recent_date_str, '%Y-%m-%d').date()
-            else:
-                selected_date = datetime.now().date()
+        
+        # Get the selected date range
+        start_date, end_date = self.get_selected_date_range()
         
         # Try to find date columns in the dataframe
         date_columns = []
@@ -5027,11 +5181,11 @@ class MonitoringDashboard:
             if any(date_word in col_lower for date_word in ['date', 'day', 'time', 'created', 'updated', 'week']):
                 date_columns.append(col)
         
-        # If no obvious date columns found, return empty dataframe (no data for selected date)
+        # If no obvious date columns found, return empty dataframe
         if not date_columns:
             return pd.DataFrame(columns=df.columns)
         
-        # Filter by the selected date
+        # Filter by the selected date range
         filtered_df = df.copy()
         found_matching_data = False
         
@@ -5041,8 +5195,8 @@ class MonitoringDashboard:
                 if not pd.api.types.is_datetime64_any_dtype(filtered_df[date_col]):
                     filtered_df[date_col] = pd.to_datetime(filtered_df[date_col], errors='coerce')
                 
-                # Filter for the selected date
-                mask = filtered_df[date_col].dt.date == selected_date
+                # Filter for the selected date range
+                mask = (filtered_df[date_col].dt.date >= start_date) & (filtered_df[date_col].dt.date <= end_date)
                 temp_filtered = filtered_df[mask]
                 
                 # If we have matching data, use it
