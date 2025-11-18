@@ -23,6 +23,51 @@ except ImportError as e:
     st.error(f"Import error: {e}")
     st.stop()
 
+# ==============================================================================
+# STANDARDIZED MESSAGE FUNCTIONS
+# ==============================================================================
+
+def show_no_data_message(context="", date=None, message_type="info"):
+    """
+    Display a standardized no data message across all dashboards.
+    
+    Args:
+        context: Additional context about which section has no data
+        date: Optional date to include in message
+        message_type: Type of message ("info", "warning", "error")
+    """
+    if date:
+        if hasattr(date, 'strftime'):
+            date_str = date.strftime('%B %d, %Y')
+        else:
+            date_str = str(date)
+        
+        if context:
+            message = f"📊 No data available for {context} on {date_str}."
+        else:
+            message = f"📊 No data available for {date_str}."
+    else:
+        if context:
+            message = f"📊 No data available for {context}."
+        else:
+            message = "📊 No data available for display."
+    
+    # Add helpful suggestions
+    suggestions = " Please check data sources or try selecting a different date."
+    full_message = message + suggestions
+    
+    # Display using the specified message type
+    if message_type == "warning":
+        st.warning(full_message)
+    elif message_type == "error":
+        st.error(full_message)
+    else:
+        st.info(full_message)
+
+# ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
 
 def format_date_to_month_year(date_input):
     """
@@ -302,7 +347,7 @@ def display_clean_dataframe(df, **kwargs):
         **kwargs: Arguments to pass to st.dataframe or st.table
     """
     if df is None or len(df) == 0:
-        st.info("No data available for display.")
+        show_no_data_message()
         return
     
     # DEBUG: Show original dataframe info
@@ -3880,7 +3925,7 @@ class MonitoringDashboard:
         
         # If no data for selected date, show warning but keep empty DataFrame
         if df.empty:
-            st.warning(f"⚠️ No data found for {selected_date.strftime('%B %d, %Y')}. Please select a different date or check data availability.")
+            show_no_data_message(date=selected_date, message_type="warning")
             # Return empty DataFrame to show no data rather than fallback to historical data
         
         # Filter data based on selected period
@@ -4556,26 +4601,56 @@ class MonitoringDashboard:
             filtered_df = self.filter_data_by_selected_date(df)
             
             if filtered_df.empty:
-                selected_date = self.get_selected_date()
-                return ("normal", "#6c757d", f"No data for {selected_date}")
+                if st.session_state.get('date_range_mode', False):
+                    start_date, end_date = self.get_selected_date_range()
+                    return ("normal", "#6c757d", f"No data for {start_date} to {end_date}")
+                else:
+                    selected_date = self.get_selected_date()
+                    return ("normal", "#6c757d", f"No data for {selected_date}")
             
-            # Get the most recent row (should be only one after date filtering)
+            # Handle data aggregation based on mode
             if len(filtered_df) > 0:
-                recent_data = filtered_df.iloc[0]
-                
-                # Get the Total Count value using our existing method
-                total_count = self.calculate_total_error_count(recent_data)
-                
-                if total_count is None:
-                    return ("warning", "#ffc107", "Total Count not found")
-                
-                # Apply specific thresholds: Red ≥750, Yellow 650-749, Green ≤649
-                if total_count >= 750:
-                    return ("critical", "#dc3545", f"{total_count} errors detected")
-                elif total_count >= 650:
-                    return ("warning", "#ffc107", f"{total_count} errors detected")
-                else:  # <= 649
-                    return ("normal", "#28a745", f"{total_count} errors detected")
+                # For date range mode, calculate averages across the range
+                # For single date mode, use the single row
+                if st.session_state.get('date_range_mode', False) and len(filtered_df) > 1:
+                    # Calculate average total count across the date range
+                    total_counts = []
+                    for _, row in filtered_df.iterrows():
+                        total_count = self.calculate_total_error_count(row)
+                        if total_count is not None:
+                            total_counts.append(total_count)
+                    
+                    if total_counts:
+                        avg_total_count = sum(total_counts) / len(total_counts)
+                        
+                        # Apply specific thresholds: Red ≥750, Yellow 650-749, Green ≤649
+                        start_date, end_date = self.get_selected_date_range()
+                        if avg_total_count >= 750:
+                            return ("critical", "#dc3545", f"Avg {avg_total_count:.0f} errors ({start_date} to {end_date})")
+                        elif avg_total_count >= 650:
+                            return ("warning", "#ffc107", f"Avg {avg_total_count:.0f} errors ({start_date} to {end_date})")
+                        else:  # <= 649
+                            return ("normal", "#28a745", f"Avg {avg_total_count:.0f} errors ({start_date} to {end_date})")
+                    else:
+                        start_date, end_date = self.get_selected_date_range()
+                        return ("warning", "#ffc107", f"No valid total counts found ({start_date} to {end_date})")
+                else:
+                    # Single date mode - use most recent row
+                    recent_data = filtered_df.iloc[0]
+                    
+                    # Get the Total Count value using our existing method
+                    total_count = self.calculate_total_error_count(recent_data)
+                    
+                    if total_count is None:
+                        return ("warning", "#ffc107", "Total Count not found")
+                    
+                    # Apply specific thresholds: Red ≥750, Yellow 650-749, Green ≤649
+                    if total_count >= 750:
+                        return ("critical", "#dc3545", f"{total_count} errors detected")
+                    elif total_count >= 650:
+                        return ("warning", "#ffc107", f"{total_count} errors detected")
+                    else:  # <= 649
+                        return ("normal", "#28a745", f"{total_count} errors detected")
             else:
                 return ("warning", "#ffc107", "No processed data available")
                 
@@ -4605,25 +4680,53 @@ class MonitoringDashboard:
             filtered_df = self.filter_data_by_selected_date(df)
             
             if filtered_df.empty:
-                return ("normal", "#28a745", "No ORA errors for selected date")
+                if st.session_state.get('date_range_mode', False):
+                    start_date, end_date = self.get_selected_date_range()
+                    return ("normal", "#28a745", f"No ORA errors for {start_date} to {end_date}")
+                else:
+                    return ("normal", "#28a745", "No ORA errors for selected date")
             
-            # Count errors
-            error_count = len(filtered_df)
-            
-            # Check if there's an error count column for total errors
-            error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
-            if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
-                total_errors = filtered_df[error_count_cols[0]].sum()
+            # Handle error counting based on mode
+            if st.session_state.get('date_range_mode', False):
+                # For date range mode, calculate average daily error count
+                # Check if there's an error count column for total errors
+                error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
+                if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
+                    # Sum all errors and divide by number of days
+                    total_errors = filtered_df[error_count_cols[0]].sum()
+                    num_days = len(filtered_df)
+                    avg_daily_errors = total_errors / num_days if num_days > 0 else 0
+                else:
+                    # Count rows (each row is an error) and divide by number of unique dates
+                    unique_dates = filtered_df.groupby(filtered_df.columns[0] if len(filtered_df.columns) > 0 else filtered_df.index).size()
+                    avg_daily_errors = len(filtered_df) / len(unique_dates) if len(unique_dates) > 0 else 0
+                
+                # Online ORA Errors thresholds: Green <60, Yellow 60-69, Red >=70
+                start_date, end_date = self.get_selected_date_range()
+                if avg_daily_errors < 60:
+                    return ("normal", "#28a745", f"Avg {avg_daily_errors:.1f} ORA errors/day ({start_date} to {end_date})")
+                elif avg_daily_errors < 70:
+                    return ("warning", "#ffc107", f"Avg {avg_daily_errors:.1f} ORA errors/day ({start_date} to {end_date})")
+                else:
+                    return ("error", "#dc3545", f"Avg {avg_daily_errors:.1f} ORA errors/day ({start_date} to {end_date})")
             else:
-                total_errors = error_count
-            
-            # Online ORA Errors thresholds: Green <60, Yellow 60-69, Red >=70
-            if total_errors < 60:
-                return ("normal", "#28a745", f"{int(total_errors)} ORA errors detected")
-            elif total_errors < 70:
-                return ("warning", "#ffc107", f"{int(total_errors)} ORA errors detected")
-            else:
-                return ("error", "#dc3545", f"{int(total_errors)} ORA errors detected")
+                # Single date mode - count errors for that specific date
+                error_count = len(filtered_df)
+                
+                # Check if there's an error count column for total errors
+                error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
+                if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
+                    total_errors = filtered_df[error_count_cols[0]].sum()
+                else:
+                    total_errors = error_count
+                
+                # Online ORA Errors thresholds: Green <60, Yellow 60-69, Red >=70
+                if total_errors < 60:
+                    return ("normal", "#28a745", f"{int(total_errors)} ORA errors detected")
+                elif total_errors < 70:
+                    return ("warning", "#ffc107", f"{int(total_errors)} ORA errors detected")
+                else:
+                    return ("error", "#dc3545", f"{int(total_errors)} ORA errors detected")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error checking online ORA status: {str(e)}")
@@ -4651,25 +4754,53 @@ class MonitoringDashboard:
             filtered_df = self.filter_data_by_selected_date(df)
             
             if filtered_df.empty:
-                return ("normal", "#28a745", "No ORA errors for selected date")
+                if st.session_state.get('date_range_mode', False):
+                    start_date, end_date = self.get_selected_date_range()
+                    return ("normal", "#28a745", f"No ORA errors for {start_date} to {end_date}")
+                else:
+                    return ("normal", "#28a745", "No ORA errors for selected date")
             
-            # Count errors
-            error_count = len(filtered_df)
-            
-            # Check if there's an error count column for total errors
-            error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
-            if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
-                total_errors = filtered_df[error_count_cols[0]].sum()
+            # Handle error counting based on mode
+            if st.session_state.get('date_range_mode', False):
+                # For date range mode, calculate average daily error count
+                # Check if there's an error count column for total errors
+                error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
+                if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
+                    # Sum all errors and divide by number of days
+                    total_errors = filtered_df[error_count_cols[0]].sum()
+                    num_days = len(filtered_df)
+                    avg_daily_errors = total_errors / num_days if num_days > 0 else 0
+                else:
+                    # Count rows (each row is an error) and divide by number of unique dates
+                    unique_dates = filtered_df.groupby(filtered_df.columns[0] if len(filtered_df.columns) > 0 else filtered_df.index).size()
+                    avg_daily_errors = len(filtered_df) / len(unique_dates) if len(unique_dates) > 0 else 0
+                
+                # Batch ORA Errors thresholds: Green <11, Yellow 11-14, Red >=15
+                start_date, end_date = self.get_selected_date_range()
+                if avg_daily_errors < 11:
+                    return ("normal", "#28a745", f"Avg {avg_daily_errors:.1f} ORA errors/day ({start_date} to {end_date})")
+                elif avg_daily_errors < 15:
+                    return ("warning", "#ffc107", f"Avg {avg_daily_errors:.1f} ORA errors/day ({start_date} to {end_date})")
+                else:
+                    return ("error", "#dc3545", f"Avg {avg_daily_errors:.1f} ORA errors/day ({start_date} to {end_date})")
             else:
-                total_errors = error_count
-            
-            # Batch ORA Errors thresholds: Green <11, Yellow 11-14, Red >=15
-            if total_errors < 11:
-                return ("normal", "#28a745", f"{int(total_errors)} ORA errors detected")
-            elif total_errors < 15:
-                return ("warning", "#ffc107", f"{int(total_errors)} ORA errors detected")
-            else:
-                return ("error", "#dc3545", f"{int(total_errors)} ORA errors detected")
+                # Single date mode - count errors for that specific date
+                error_count = len(filtered_df)
+                
+                # Check if there's an error count column for total errors
+                error_count_cols = [col for col in filtered_df.columns if 'error' in col.lower() and 'count' in col.lower()]
+                if error_count_cols and pd.api.types.is_numeric_dtype(filtered_df[error_count_cols[0]]):
+                    total_errors = filtered_df[error_count_cols[0]].sum()
+                else:
+                    total_errors = error_count
+                
+                # Batch ORA Errors thresholds: Green <11, Yellow 11-14, Red >=15
+                if total_errors < 11:
+                    return ("normal", "#28a745", f"{int(total_errors)} ORA errors detected")
+                elif total_errors < 15:
+                    return ("warning", "#ffc107", f"{int(total_errors)} ORA errors detected")
+                else:
+                    return ("error", "#dc3545", f"{int(total_errors)} ORA errors detected")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error checking batch ORA status: {str(e)}")
@@ -4694,29 +4825,57 @@ class MonitoringDashboard:
             filtered_df = self.filter_data_by_selected_date(df)
             
             if filtered_df.empty:
-                selected_date = self.get_selected_date()
-                return ("normal", "#6c757d", f"No data for {selected_date}")
+                if st.session_state.get('date_range_mode', False):
+                    start_date, end_date = self.get_selected_date_range()
+                    return ("normal", "#6c757d", f"No data for {start_date} to {end_date}")
+                else:
+                    selected_date = self.get_selected_date()
+                    return ("normal", "#6c757d", f"No data for {selected_date}")
             
             # Process data to add calculated percentage columns (same as the dashboard)
             processed_df = self.add_user_impact_percentage_columns(filtered_df.copy())
             
-            # Get the most recent row (should be only one after date filtering)
+            # Handle data aggregation based on mode
             if len(processed_df) > 0:
-                recent_data = processed_df.iloc[0]
-                
-                # Get the 0 Errors % value using our existing method
-                zero_errors_pct = self.get_zero_errors_percentage(recent_data)
-                
-                if zero_errors_pct is None:
-                    return ("warning", "#ffc107", "0 Errors % calculation failed")
-                
-                # Apply the 89%/90% thresholds as originally designed
-                if zero_errors_pct < 89:
-                    return ("critical", "#dc3545", f"Low success rate: {zero_errors_pct:.1f}%")
-                elif zero_errors_pct >= 89 and zero_errors_pct <= 90:
-                    return ("warning", "#ffc107", f"Moderate success rate: {zero_errors_pct:.1f}%")
-                else:  # > 90%
-                    return ("normal", "#28a745", f"Good success rate: {zero_errors_pct:.1f}%")
+                if st.session_state.get('date_range_mode', False) and len(processed_df) > 1:
+                    # For date range mode, calculate average 0 Errors % across the range
+                    zero_errors_pcts = []
+                    for _, row in processed_df.iterrows():
+                        zero_errors_pct = self.get_zero_errors_percentage(row)
+                        if zero_errors_pct is not None:
+                            zero_errors_pcts.append(zero_errors_pct)
+                    
+                    if zero_errors_pcts:
+                        avg_zero_errors_pct = sum(zero_errors_pcts) / len(zero_errors_pcts)
+                        
+                        # Apply the 89%/90% thresholds as originally designed
+                        start_date, end_date = self.get_selected_date_range()
+                        if avg_zero_errors_pct < 89:
+                            return ("critical", "#dc3545", f"Low avg success rate: {avg_zero_errors_pct:.1f}% ({start_date} to {end_date})")
+                        elif avg_zero_errors_pct >= 89 and avg_zero_errors_pct <= 90:
+                            return ("warning", "#ffc107", f"Moderate avg success rate: {avg_zero_errors_pct:.1f}% ({start_date} to {end_date})")
+                        else:  # > 90%
+                            return ("normal", "#28a745", f"Good avg success rate: {avg_zero_errors_pct:.1f}% ({start_date} to {end_date})")
+                    else:
+                        start_date, end_date = self.get_selected_date_range()
+                        return ("warning", "#ffc107", f"0 Errors % calculation failed ({start_date} to {end_date})")
+                else:
+                    # Single date mode - use most recent row
+                    recent_data = processed_df.iloc[0]
+                    
+                    # Get the 0 Errors % value using our existing method
+                    zero_errors_pct = self.get_zero_errors_percentage(recent_data)
+                    
+                    if zero_errors_pct is None:
+                        return ("warning", "#ffc107", "0 Errors % calculation failed")
+                    
+                    # Apply the 89%/90% thresholds as originally designed
+                    if zero_errors_pct < 89:
+                        return ("critical", "#dc3545", f"Low success rate: {zero_errors_pct:.1f}%")
+                    elif zero_errors_pct >= 89 and zero_errors_pct <= 90:
+                        return ("warning", "#ffc107", f"Moderate success rate: {zero_errors_pct:.1f}%")
+                    else:  # > 90%
+                        return ("normal", "#28a745", f"Good success rate: {zero_errors_pct:.1f}%")
             else:
                 return ("warning", "#ffc107", "No processed data available")
                 
@@ -4775,7 +4934,7 @@ class MonitoringDashboard:
             bi_path = Path(__file__).parent / "Monitoring Data Files" / "BI Monitoring"
             
             if not bi_path.exists():
-                return ("warning", "#ffc107", "Data not available")
+                return ("warning", "#ffc107", "📊 No data available")
             
             # Check for different time period folders
             folders = ["Daily", "Weekly", "Monthly", "Yearly"]
@@ -4784,9 +4943,9 @@ class MonitoringDashboard:
             if len(available_folders) >= 4:
                 return ("normal", "#28a745", f"Monitoring {len(available_folders)} time periods")
             elif len(available_folders) >= 2:
-                return ("warning", "#ffc107", "Data not available")
+                return ("warning", "#ffc107", "📊 No data available")
             else:
-                return ("warning", "#ffc107", "Data not available")
+                return ("warning", "#ffc107", "📊 No data available")
                 
         except Exception as e:
             return ("warning", "#ffc107", f"Error checking data: {str(e)}")
@@ -4834,10 +4993,10 @@ class MonitoringDashboard:
             processes = ["Mass Update", "Interfaces", "Extra Batch Connections", "Hung Threads"]
             
             # Since no real data source is configured yet, return data not available
-            return ("warning", "#ffc107", "Data not available")
+            return ("warning", "#ffc107", "📊 No data available")
                 
         except Exception as e:
-            return ("warning", "#ffc107", "Data not available")
+            return ("warning", "#ffc107", "📊 No data available")
 
     def get_batch_status_summary(self):
         """Get status summary for Batch Status based on UAT and Production failed jobs."""
@@ -5698,6 +5857,9 @@ class MonitoringDashboard:
         """Render benefit issuance table with variance highlighting."""
         import pandas as pd
         
+        # Remove empty rows first
+        df = remove_empty_rows(df)
+        
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
         
@@ -5803,9 +5965,12 @@ class MonitoringDashboard:
             # Apply styling
             styled_df = display_df.style.apply(highlight_variance_rows, axis=1)
             
-            # Display with custom styling and dynamic height
-            display_height = min(600, max(200, len(df) * 35 + 100))
-            st.dataframe(styled_df, use_container_width=True, height=display_height, hide_index=True)
+            # Display with custom styling using ultra-aggressive cleaning
+            display_clean_dataframe(
+                styled_df.data,  # Get the underlying dataframe from styled object
+                use_container_width=True,
+                hide_index=True
+            )
         else:
             # If no variance columns found, still apply currency formatting
             display_df = df.copy()
@@ -5842,14 +6007,20 @@ class MonitoringDashboard:
                     mask = (display_df[col] == '') & (display_df[col].notna())
                     display_df[col] = display_df[col].where(~mask, 'N/A')
             
-            # Use regular table with dynamic height
-            display_height = min(600, max(200, len(display_df) * 35 + 100))
-            st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
+            # Use ultra-aggressive cleaning like ORA errors
+            display_clean_dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True
+            )
     
     def render_view_history_table(self, df: pd.DataFrame, title: str) -> None:
         """Render View History Screen Validation table with merged date cells."""
         import pandas as pd
         from datetime import datetime
+        
+        # Remove empty rows first
+        df = remove_empty_rows(df)
         
         # Display table title
         st.subheader(title)
@@ -5866,7 +6037,7 @@ class MonitoringDashboard:
                 st.metric("Unique Dates", unique_dates)
         
         if len(df) == 0:
-            st.warning("No data to display")
+            show_no_data_message(context="this table")
             return
         
         # Create HTML table with merged cells
@@ -5988,6 +6159,9 @@ class MonitoringDashboard:
         """Render Tango Monitoring table with clickable dates for upload status."""
         st.subheader(title)
         
+        # Remove empty rows first
+        df = remove_empty_rows(df)
+        
         # Check if upload status file exists
         workspace_path = Path(__file__).parent
         upload_status_path = workspace_path / "Monitoring Data Files" / "Correspondence" / "Tango Monitoring File Upload Status.xlsx"
@@ -6015,7 +6189,12 @@ class MonitoringDashboard:
         if not date_columns:
             # No date columns found, show regular table
             st.write("**Main Tango Monitoring Data:**")
-            st.dataframe(df, use_container_width=True, height=400, hide_index=True)
+            # Use ultra-aggressive cleaning like ORA errors
+            display_clean_dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True
+            )
             return
         
         date_col = date_columns[0]  # Use first date column
@@ -6186,6 +6365,10 @@ class MonitoringDashboard:
         
         # Load upload status data for the specific date
         date_specific_df = self.load_tango_upload_status(selected_date)
+        
+        # Remove empty rows first
+        if not date_specific_df.empty:
+            date_specific_df = remove_empty_rows(date_specific_df)
         
         if date_specific_df.empty:
             # Show a clean message when no data is available
@@ -6366,7 +6549,12 @@ class MonitoringDashboard:
         else:
             # Data Table - Main Focus  
             st.header("📋 Data Table")
-            self.table_component.data_table(filtered_df, file_display_name)
+            # Use the same ultra-aggressive cleaning as ORA errors
+            display_clean_dataframe(
+                filtered_df,
+                use_container_width=True,
+                hide_index=True
+            )
         
         # Key Metrics - Below Data Table
         st.header(f"📊 Key Metrics")
@@ -6450,7 +6638,7 @@ class MonitoringDashboard:
         st.subheader("📈 Tango System Analytics")
         
         if df.empty:
-            st.warning("No data available for Tango analytics.")
+            show_no_data_message(context="Tango analytics")
             return
         
         # Display data overview
@@ -6479,10 +6667,14 @@ class MonitoringDashboard:
         # Show sample data
         if not df.empty:
             st.write("**Sample Records:**")
-            st.dataframe(df.head(3), hide_index=True)
+            df_sample = remove_empty_rows(df.head(3))  # Remove empty rows from sample
+            st.dataframe(df_sample, hide_index=True)
     
     def render_error_counts_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render 100 Error Counts specific content."""
+        
+        # Remove empty rows at the start
+        df = remove_empty_rows(df)
         
         selected_subsection = st.session_state.get('selected_subsection')
         
@@ -6523,6 +6715,9 @@ class MonitoringDashboard:
     
     def render_user_impact_content(self, df: pd.DataFrame, selected_period: str) -> None:
         """Render User Impact specific content."""
+        
+        # Remove empty rows at the start
+        df = remove_empty_rows(df)
         
         selected_subsection = st.session_state.get('selected_subsection')
         
@@ -6710,6 +6905,9 @@ class MonitoringDashboard:
         """Render extra batch connections table with highlighting for # Connections >= 7."""
         import pandas as pd
         
+        # Remove empty rows first
+        df = remove_empty_rows(df)
+        
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
         
@@ -6882,8 +7080,9 @@ class MonitoringDashboard:
         """Render Data Warehouse specific content."""
         if df is None or df.empty:
             st.markdown("## 🏢 Data Warehouse Overview")
-            st.info("📋 No Data Warehouse data found. This could indicate:")
+            show_no_data_message(context="Data Warehouse")
             st.markdown("""
+            **Possible reasons:**
             - No Excel files in the Data Warehouse folder
             - Files are empty or in an unsupported format
             - No data matching the selected date range
@@ -7019,17 +7218,15 @@ class MonitoringDashboard:
                         # Show column information
                         st.markdown(f"**📋 Data Columns:** {', '.join(df_sorted.columns)}")
                         
-                        # Display the data with proper table formatting
+                        # Display the data using ultra-aggressive cleaning like ORA errors
                         st.markdown("### 📊 Detailed Data")
-                        display_height = min(600, max(200, len(df_sorted) * 35 + 100))
-                        st.dataframe(
-                            df_sorted, 
-                            width="stretch", 
-                            height=display_height, 
+                        display_clean_dataframe(
+                            df_sorted,
+                            use_container_width=True,
                             hide_index=True
                         )
                     else:
-                        st.info("📋 No data available for this date.")
+                        show_no_data_message(context="this date")
                 else:
                     st.error(f"❌ Could not load data for {selected_date}")
                     
@@ -7116,6 +7313,9 @@ class MonitoringDashboard:
     def render_user_impact_table(self, df: pd.DataFrame, title: str) -> None:
         """Render User Impact table WITHOUT percentage formatting to preserve original values."""
         import pandas as pd
+        
+        # Remove empty rows first
+        df = remove_empty_rows(df)
         
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
@@ -7292,16 +7492,21 @@ class MonitoringDashboard:
         # Use dynamic height based on number of rows
         display_height = min(600, max(200, len(display_df) * 35 + 100))
         
-
-
-        # Display the main table
-        st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
+        # Use the same ultra-aggressive cleaning as ORA errors
+        display_clean_dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
         
 
     
     def render_error_counts_table(self, df: pd.DataFrame, title: str) -> None:
         """Render Error Counts table with calculated percentage columns."""
         import pandas as pd
+        
+        # Remove empty rows first
+        df = remove_empty_rows(df)
         
         # Sort by date columns (latest to oldest)
         df = sort_dataframe_by_date(df, ascending=False)
@@ -7416,7 +7621,13 @@ class MonitoringDashboard:
         
         # Use dynamic height based on number of rows
         display_height = min(600, max(200, len(display_df) * 35 + 100))
-        st.dataframe(display_df, use_container_width=True, height=display_height, hide_index=True)
+        
+        # Use the same ultra-aggressive cleaning as ORA errors
+        display_clean_dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
         
 
         
@@ -7554,7 +7765,7 @@ class MonitoringDashboard:
             key_prefix: Prefix for Streamlit component keys to ensure uniqueness
         """
         if df.empty:
-            st.warning("No data to display charts.")
+            show_no_data_message(context="charts", message_type="warning")
             return
         
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
@@ -7643,6 +7854,9 @@ class MonitoringDashboard:
     
     def render_generic_section_content(self, df: pd.DataFrame, selected_period: str, section_name: str, section_icon: str = "📊") -> None:
         """Generic content renderer for all sections with clean layout."""
+        # Remove empty rows first
+        df = remove_empty_rows(df)
+        
         # Apply date filtering to ensure we show data for the selected date
         df = self.filter_data_by_selected_date(df)
         
@@ -7665,7 +7879,12 @@ class MonitoringDashboard:
         
         # Data Table - Main Focus
         st.header("📋 Data Table")
-        self.table_component.data_table(filtered_df, f"{selected_period.title()} {section_name} Data")
+        # Use the same ultra-aggressive cleaning as ORA errors
+        display_clean_dataframe(
+            filtered_df,
+            use_container_width=True,
+            hide_index=True
+        )
         
         # Key Metrics - Below Data Table
         st.header(f"📊 Key Metrics")
@@ -7914,7 +8133,7 @@ class MonitoringDashboard:
                                 st.error(f"Failed to load the Excel file for {auto_subsection}. Please check the file format.")
                         else:
                             # No file found - show message
-                            st.warning(f"No data file found for {auto_subsection}. Please ensure the Excel file exists in the monitoring data folder.")
+                            show_no_data_message(context=f"{auto_subsection} data file", message_type="warning")
                     except Exception as e:
                         st.error(f"Error loading data for {auto_subsection}: {str(e)}")
                 else:
@@ -8243,7 +8462,7 @@ class MonitoringDashboard:
             st.markdown("## 📊 Environment Status")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Data Status", "No Data")
+                st.metric("Data Status", "📊 No Data Available")
             with col2:
                 st.metric("Environment", title.split()[0])
             with col3:
